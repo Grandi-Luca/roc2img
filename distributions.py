@@ -1,6 +1,3 @@
-
-import re
-
 import numpy as np
 import torch
 from sklearn.neighbors import KernelDensity
@@ -104,6 +101,7 @@ def _real_resnet_weight_distr(cout: int, cin: int, kh: int, kw: int, groups: int
     assert KDE_MODELS['weight'] is not None, "KDE model for weights is not fitted yet. Extract the weights and then fit KDE model."
     samples = KDE_MODELS['weight'].sample(cout * (cin // groups) * kh * kw)
     samples = samples.reshape(cout, cin // groups, kh, kw).astype(np.float32)
+    samples = samples - samples.mean(axis=(2, 3), keepdims=True)
     return torch.from_numpy(samples)
 
 
@@ -124,39 +122,50 @@ def _uniform_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> to
 
 #  ##### GAUSS DISTRIBUTIONS FOR RESNET BIASES (GLOBAL) #####
 def _approx_resnet18_bias_global_gauss_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
-    samples = np.random.normal(MU_BIAS_RESNET_18, STD_BIAS_RESNET_18, size=cout).astype(np.float32)
+    samples = np.random.normal(
+        MU_BIAS_RESNET_18, STD_BIAS_RESNET_18, size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 
 def _approx_resnet50_bias_global_gauss_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
-    samples = np.random.normal(MU_BIAS_RESNET_50, STD_BIAS_RESNET_50, size=cout).astype(np.float32)
+    samples = np.random.normal(
+        MU_BIAS_RESNET_50, STD_BIAS_RESNET_50, size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 
 def _approx_resnet101_bias_global_gauss_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
-    samples = np.random.normal(MU_BIAS_RESNET_101, STD_BIAS_RESNET_101, size=cout).astype(np.float32)
+    samples = np.random.normal(
+        MU_BIAS_RESNET_101, STD_BIAS_RESNET_101, size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 
 def _approx_resnet152_bias_global_gauss_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
-    samples = np.random.normal(MU_BIAS_RESNET_152, STD_BIAS_RESNET_152, size=cout).astype(np.float32)
+    samples = np.random.normal(
+        MU_BIAS_RESNET_152, STD_BIAS_RESNET_152, size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 # ##### LAPLACE DISTRIBUTIONS FOR RESNET BIASES (GLOBAL) #####
 def _approx_resnet18_bias_global_laplace_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
-    samples = np.random.laplace(MU_BIAS_RESNET_18, STD_BIAS_RESNET_18/np.sqrt(2), size=cout).astype(np.float32)
+    samples = np.random.laplace(
+        MU_BIAS_RESNET_18, STD_BIAS_RESNET_18/np.sqrt(2), size=cout).astype(np.float32)
     return torch.from_numpy(samples)
+
 
 def _approx_resnet50_bias_global_laplace_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
-    samples = np.random.laplace(MU_BIAS_RESNET_50, STD_BIAS_RESNET_50/np.sqrt(2), size=cout).astype(np.float32)
+    samples = np.random.laplace(
+        MU_BIAS_RESNET_50, STD_BIAS_RESNET_50/np.sqrt(2), size=cout).astype(np.float32)
     return torch.from_numpy(samples)
+
 
 def _approx_resnet101_bias_global_laplace_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
-    samples = np.random.laplace(MU_BIAS_RESNET_101, STD_BIAS_RESNET_101/np.sqrt(2), size=cout).astype(np.float32)
+    samples = np.random.laplace(
+        MU_BIAS_RESNET_101, STD_BIAS_RESNET_101/np.sqrt(2), size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
+
 def _approx_resnet152_bias_global_laplace_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
-    samples = np.random.laplace(MU_BIAS_RESNET_152, STD_BIAS_RESNET_152/np.sqrt(2), size=cout).astype(np.float32)
+    samples = np.random.laplace(
+        MU_BIAS_RESNET_152, STD_BIAS_RESNET_152/np.sqrt(2), size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 
@@ -177,45 +186,66 @@ class Distribution():
 class DistributionType():
     # WEIGHT DISTRIBUTIONS
     APPROX_RESNET50_WEIGHT_FIRST_GAUSS = Distribution(
-        "APPROX_RESNET50_WEIGHT_FIRST_GAUSS", _approx_resnet_50_weight_first_gauss_distr)
+        "APPROX_RESNET50_FIRST_GAUSS", _approx_resnet_50_weight_first_gauss_distr)
     APPROX_RESNET18_WEIGHT_FIRST_GAUSS = Distribution(
-        "APPROX_RESNET18_WEIGHT_FIRST_GAUSS", _approx_resnet_18_weight_first_gauss_distr)
-    
+        "APPROX_RESNET18_FIRST_GAUSS", _approx_resnet_18_weight_first_gauss_distr)
+
     APPROX_RESNET50_WEIGHT_FIRST_LAPLACE = Distribution(
-        "APPROX_RESNET50_WEIGHT_FIRST_LAPLACE", _approx_resnet_50_weight_first_laplace_distr)
+        "APPROX_RESNET50_FIRST_LAPLACE", _approx_resnet_50_weight_first_laplace_distr)
     APPROX_RESNET18_WEIGHT_FIRST_LAPLACE = Distribution(
-        "APPROX_RESNET18_WEIGHT_FIRST_LAPLACE", _approx_resnet_18_weight_first_laplace_distr)
-    
+        "APPROX_RESNET18_FIRST_LAPLACE", _approx_resnet_18_weight_first_laplace_distr)
+
+    APPROX_RESNET101_WEIGHT_FIRST_LAPLACE = Distribution(
+        "APPROX_RESNET101_FIRST_LAPLACE", _approx_resnet_50_weight_first_laplace_distr)
+    APPROX_RESNET101_WEIGHT_FIRST_GAUSS = Distribution(
+        "APPROX_RESNET101_FIRST_GAUSS", _approx_resnet_50_weight_first_gauss_distr)
+
+    APPROX_RESNET152_WEIGHT_FIRST_LAPLACE = Distribution(
+        "APPROX_RESNET152_FIRST_LAPLACE", _approx_resnet_50_weight_first_laplace_distr)
+    APPROX_RESNET152_WEIGHT_FIRST_GAUSS = Distribution(
+        "APPROX_RESNET152_FIRST_GAUSS", _approx_resnet_50_weight_first_gauss_distr)
+
     GAUSSIAN_01 = Distribution("GAUSSIAN_01", _gaussian_01_distr)
-    
+
     CONV2D_WEIGHT = Distribution("CONV2D_WEIGHT", _conv2d_weight_distr)
-    
-    REAL_RESNET_WEIGHT = Distribution(
-        "REAL_RESNET_WEIGHT", _real_resnet_weight_distr)
-    
+
+    REAL_RESNET18_WEIGHT = Distribution(
+        "REAL_RESNET18", _real_resnet_weight_distr)
+    REAL_RESNET50_WEIGHT = Distribution(
+        "REAL_RESNET50", _real_resnet_weight_distr)
+    REAL_RESNET101_WEIGHT = Distribution(
+        "REAL_RESNET101", _real_resnet_weight_distr)
+    REAL_RESNET152_WEIGHT = Distribution(
+        "REAL_RESNET152", _real_resnet_weight_distr)
+
     # BIAS DISTRIBUTIONS
     CONV2D_BIAS = Distribution("CONV2D_BIAS", _conv2d_bias_distr)
-    
+
     UNIFORM = Distribution("UNIFORM", _uniform_distr)
-    
-    REAL_RESNET_BIAS = Distribution(
-        "REAL_RESNET_BIAS", _real_resnet_bias_distr)
-    
+
+    REAL_RESNET18_BIAS = Distribution(
+        "REAL_RESNET18", _real_resnet_bias_distr)
+    REAL_RESNET50_BIAS = Distribution(
+        "REAL_RESNET50", _real_resnet_bias_distr)
+    REAL_RESNET101_BIAS = Distribution(
+        "REAL_RESNET101", _real_resnet_bias_distr)
+    REAL_RESNET152_BIAS = Distribution(
+        "REAL_RESNET152", _real_resnet_bias_distr)
+
     APPROX_RESNET18_BIAS_GLOBAL_GAUSS = Distribution(
-        "APPROX_RESNET18_BIAS_GLOBAL_GAUSS", _approx_resnet18_bias_global_gauss_distr)
+        "APPROX_RESNET18_GLOBAL_GAUSS", _approx_resnet18_bias_global_gauss_distr)
     APPROX_RESNET101_BIAS_GLOBAL_GAUSS = Distribution(
-        "APPROX_RESNET101_BIAS_GLOBAL_GAUSS", _approx_resnet101_bias_global_gauss_distr)
+        "APPROX_RESNET101_GLOBAL_GAUSS", _approx_resnet101_bias_global_gauss_distr)
     APPROX_RESNET152_BIAS_GLOBAL_GAUSS = Distribution(
-        "APPROX_RESNET152_BIAS_GLOBAL_GAUSS", _approx_resnet152_bias_global_gauss_distr)
+        "APPROX_RESNET152_GLOBAL_GAUSS", _approx_resnet152_bias_global_gauss_distr)
     APPROX_RESNET50_BIAS_GLOBAL_GAUSS = Distribution(
-        "APPROX_RESNET50_BIAS_GLOBAL_GAUSS", _approx_resnet50_bias_global_gauss_distr)
-    
+        "APPROX_RESNET50_GLOBAL_GAUSS", _approx_resnet50_bias_global_gauss_distr)
+
     APPROX_RESNET18_BIAS_GLOBAL_LAPLACE = Distribution(
-        "APPROX_RESNET18_BIAS_GLOBAL_LAPLACE", _approx_resnet18_bias_global_laplace_distr)
+        "APPROX_RESNET18_GLOBAL_LAPLACE", _approx_resnet18_bias_global_laplace_distr)
     APPROX_RESNET101_BIAS_GLOBAL_LAPLACE = Distribution(
-        "APPROX_RESNET101_BIAS_GLOBAL_LAPLACE", _approx_resnet101_bias_global_laplace_distr)
+        "APPROX_RESNET101_GLOBAL_LAPLACE", _approx_resnet101_bias_global_laplace_distr)
     APPROX_RESNET152_BIAS_GLOBAL_LAPLACE = Distribution(
-        "APPROX_RESNET152_BIAS_GLOBAL_LAPLACE", _approx_resnet152_bias_global_laplace_distr)
+        "APPROX_RESNET152_GLOBAL_LAPLACE", _approx_resnet152_bias_global_laplace_distr)
     APPROX_RESNET50_BIAS_GLOBAL_LAPLACE = Distribution(
-        "APPROX_RESNET50_BIAS_GLOBAL_LAPLACE", _approx_resnet50_bias_global_laplace_distr)
-    
+        "APPROX_RESNET50_GLOBAL_LAPLACE", _approx_resnet50_bias_global_laplace_distr)

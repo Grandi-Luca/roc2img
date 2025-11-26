@@ -2,15 +2,17 @@ import numpy as np
 
 import torch
 from torch.nn import functional as F
+from torch.utils.data import TensorDataset, DataLoader
 
 from sklearn.base import BaseEstimator, TransformerMixin
 
-from typing import Optional
 from collections.abc import Callable
 
+from typing import Optional 
+
 from utils import ConvolutionType, PaddingMode, FeatureType, DilationType
-from utils import _set_random_seed
-from distributions import DistributionType
+from utils import _set_random_seed, ResNetModel
+from distributions import DistributionType, extract_weights_and_biases, fit_kde_models
 
 
 def _generate_kernels(
@@ -23,6 +25,7 @@ def _generate_kernels(
     weight_distr_fn: Callable,
     bias_distr_fn: Callable,
     dilation: DilationType,
+    random_state: Optional[int] = None
 ) -> dict:
     """ Generate random convolutional kernels for ROCKET.
 
@@ -37,6 +40,9 @@ def _generate_kernels(
     Returns:
         dict: Dictionary containing generated kernels and biases.
     """
+
+    if random_state is not None:
+        _set_random_seed(random_state)
 
     groups = {}
 
@@ -58,7 +64,9 @@ def _generate_kernels(
         num_ker = (sizes == size).sum()
         if num_ker > 0:
             # Generate dilations
-            if isinstance(dilation, int):
+            if size == 1:
+                dilations[sizes == size] = 1
+            elif isinstance(dilation, int):
                 dilations[sizes == size] = dilation
             else:
                 if dilation == DilationType.RANDOM_13:
@@ -135,10 +143,10 @@ def _generate_weights(
 class ROCKET(BaseEstimator, TransformerMixin):
     def __init__(
             self,
-            distr_pair: tuple[DistributionType, DistributionType],
             cout=10000,
             candidate_lengths: list = [3, 5, 7],
             padding_mode: PaddingMode = PaddingMode.RANDOM,
+            distr_pair: tuple[DistributionType, DistributionType] = (DistributionType.GAUSSIAN_01, DistributionType.UNIFORM),
             dilation: DilationType = DilationType.UNIFORM_ROCKET,
             stride: int = 1,
             convolution_type: ConvolutionType = ConvolutionType.STANDARD,
@@ -173,8 +181,21 @@ class ROCKET(BaseEstimator, TransformerMixin):
 
         self.random_state = random_state if isinstance(
             random_state, int) else None
-        if self.random_state is not None:
-            _set_random_seed(self.random_state)
+
+        # Extract weights and biases from ResNet model and fit KDE models
+        model = None
+        if self.distr_pair[0] == DistributionType.REAL_RESNET18_WEIGHT:
+            model = ResNetModel.RESNET18
+        elif self.distr_pair[0] == DistributionType.REAL_RESNET50_WEIGHT:
+            model = ResNetModel.RESNET50
+        elif self.distr_pair[0] == DistributionType.REAL_RESNET101_WEIGHT:
+            model = ResNetModel.RESNET101
+        elif self.distr_pair[0] == DistributionType.REAL_RESNET152_WEIGHT:
+            model = ResNetModel.RESNET152
+        
+        if model is not None:
+            w, b = extract_weights_and_biases(model)
+            fit_kde_models(w, b)
 
         self.conv_params = {}
 
@@ -195,10 +216,34 @@ class ROCKET(BaseEstimator, TransformerMixin):
             self.padding_mode,
             self.distr_pair[0].fn,
             self.distr_pair[1].fn,
-            self.dilation
+            self.dilation,
+            self.random_state
         )
 
     def transform(self, X):
+        new_batch_size = 128
+        max_batch_size = 2**13
+
+        batch_size, _, _, _ = X.shape
+        if (np.log2(batch_size) % 1 != 0 or batch_size > max_batch_size):
+            if isinstance(X, np.ndarray):
+                X = torch.from_numpy(X).float()
+            y = torch.zeros(X.shape[0], dtype=torch.int32)  # dummy labels
+            dataset = TensorDataset(X, y)
+            loader = DataLoader(dataset, batch_size=new_batch_size, shuffle=False, num_workers=2)
+
+            X_list = []
+
+            for X_batch, _ in loader:
+                X_batch_transformed = self._transform(X_batch)
+                X_list.append(X_batch_transformed.cpu())
+            return torch.cat(X_list, dim=0).numpy()
+
+        else:
+            return self._transform(X).cpu().numpy()
+
+
+    def _transform(self, X):
         """Transform the input data using the generated convolutional kernels.
         Args:
             X (torch.Tensor): Input data of shape [B, C, H, W].
