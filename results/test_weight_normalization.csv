@@ -1,0 +1,19 @@
+,,,,model_fit_time,model_fit_time,transform_time_train,transform_time_train,transform_time_test,transform_time_test,training_time_ridge,training_time_ridge,accuracy_ridge,accuracy_ridge
+,,,,mean,std,mean,std,mean,std,mean,std,mean,std
+normalization,subset_percentage,convolution_type,distr_pair,,,,,,,,,,
+False,0.500,depthwise,REAL_RESNET101_WEIGHT - REAL_RESNET101_BIAS,0.023,0.007,191.709,7.120,77.020,2.925,0.599,0.002,0.577,0.004
+False,0.500,depthwise,real_resnet152 - real_resnet152,0.033,0.002,183.777,4.471,73.853,0.796,0.618,0.017,0.578,0.001
+False,0.500,depthwise,real_resnet18 - real_resnet18,0.027,0.010,222.143,11.177,81.898,8.952,0.619,0.026,0.573,0.002
+False,0.500,depthwise,real_resnet50 - real_resnet50,0.028,0.009,635.286,387.067,147.761,124.493,0.637,0.024,0.577,0.002
+False,0.500,standard,REAL_RESNET101_WEIGHT - REAL_RESNET101_BIAS,0.027,0.008,42.986,1.055,17.265,0.400,0.633,0.054,0.564,0.004
+False,0.500,standard,real_resnet152 - real_resnet152,0.026,0.007,41.238,0.786,16.681,0.345,0.610,0.017,0.562,0.003
+False,0.500,standard,real_resnet18 - real_resnet18,0.025,0.010,45.813,7.995,17.908,3.311,0.601,0.072,0.542,0.003
+False,0.500,standard,real_resnet50 - real_resnet50,0.017,0.000,47.869,2.695,17.565,2.258,0.542,0.093,0.570,0.004
+True,0.500,depthwise,REAL_RESNET101_WEIGHT - REAL_RESNET101_BIAS,0.025,0.008,197.414,4.484,79.826,2.086,0.664,0.052,0.617,0.004
+True,0.500,depthwise,real_resnet152 - real_resnet152,0.029,0.009,181.309,8.771,75.029,2.406,0.624,0.019,0.620,0.003
+True,0.500,depthwise,real_resnet18 - real_resnet18,0.022,0.010,222.791,7.056,83.872,11.997,0.607,0.008,0.612,0.003
+True,0.500,depthwise,real_resnet50 - real_resnet50,0.023,0.009,199.688,5.751,79.829,2.475,0.622,0.005,0.615,0.002
+True,0.500,standard,REAL_RESNET101_WEIGHT - REAL_RESNET101_BIAS,0.021,0.008,41.893,2.326,16.990,0.990,0.599,0.008,0.619,0.003
+True,0.500,standard,real_resnet152 - real_resnet152,0.034,0.016,41.620,0.784,17.109,0.513,0.643,0.068,0.612,0.002
+True,0.500,standard,real_resnet18 - real_resnet18,0.026,0.008,47.706,6.024,20.102,4.467,0.605,0.014,0.609,0.001
+True,0.500,standard,real_resnet50 - real_resnet50,0.022,0.009,45.403,3.076,16.359,0.871,0.575,0.045,0.618,0.005

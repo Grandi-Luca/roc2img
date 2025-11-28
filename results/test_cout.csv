@@ -1,0 +1,21 @@
+,,,,,,,model_fit_time,model_fit_time,transform_time_train,transform_time_train,transform_time_test,transform_time_test,training_time_ridge,training_time_ridge,accuracy_ridge,accuracy_ridge
+,,,,,,,mean,std,mean,std,mean,std,mean,std,mean,std
+subset_percentage,convolution_type,candidate_lengths,features_to_extract,distr_pair,dilation,cout,,,,,,,,,,
+0.500,depthwise,3,ppv,REAL_RESNET101 - REAL_RESNET101,1,500,0.023,0.035,163.738,4.037,66.046,0.356,0.188,0.031,0.560,0.002
+0.500,depthwise,3,ppv,REAL_RESNET101 - REAL_RESNET101,2,500,0.003,0.000,152.464,0.119,61.798,0.747,0.193,0.005,0.564,0.001
+0.500,depthwise,3,ppv,REAL_RESNET101 - REAL_RESNET101,3,500,0.005,0.003,145.734,3.706,59.670,1.612,0.228,0.027,0.549,0.003
+0.500,depthwise,3,ppv,REAL_RESNET101 - REAL_RESNET101,random_1_3,500,0.004,0.000,148.497,4.187,61.582,0.303,0.241,0.079,0.584,0.006
+0.500,depthwise,3,ppv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,500,0.009,0.003,77.316,20.809,25.812,1.537,0.157,0.006,0.591,0.004
+0.500,standard,3,ppv,REAL_RESNET101 - REAL_RESNET101,1,500,0.003,0.001,47.187,4.686,18.487,2.767,0.178,0.053,0.569,0.001
+0.500,standard,3,ppv,REAL_RESNET101 - REAL_RESNET101,2,500,0.004,0.002,45.471,1.546,18.474,1.530,0.217,0.020,0.566,0.003
+0.500,standard,3,ppv,REAL_RESNET101 - REAL_RESNET101,3,500,0.003,0.000,42.145,1.659,16.781,0.447,0.199,0.010,0.549,0.009
+0.500,standard,3,ppv,REAL_RESNET101 - REAL_RESNET101,random_1_3,500,0.005,0.002,26.749,2.130,11.393,0.702,0.225,0.016,0.586,0.002
+0.500,standard,3,ppv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,500,0.008,0.001,22.707,0.290,9.603,0.225,0.217,0.020,0.593,0.004
+0.500,depthwise,3,ppv - mpv - mipv - lspv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,500,0.011,0.005,642.066,67.364,213.876,21.363,1.125,0.049,0.659,0.004
+0.500,standard,3,ppv - mpv - mipv - lspv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,500,0.007,0.001,177.423,9.703,73.474,2.069,1.045,0.018,0.662,0.002
+0.500,depthwise,3,ppv - mpv - mipv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,500,0.019,0.008,118.583,27.491,48.007,5.686,0.736,0.051,0.651,0.006
+0.500,standard,3,ppv - mpv - mipv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,500,0.010,0.001,35.101,1.610,13.906,0.496,0.807,0.082,0.656,0.004
+0.500,depthwise,3,mipv - mpv - ppv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,5000,0.024,0.001,1886.469,41.426,780.872,39.265,25.090,0.477,0.581,0.002
+0.500,standard,3,mipv - mpv - ppv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,5000,0.023,0.003,492.388,82.699,199.057,5.967,25.301,0.620,0.586,0.007
+0.500,depthwise,3,ppv - mpv - mipv - lspv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,5000,0.039,0.011,8270.115,217.943,3253.026,87.519,47.655,0.286,0.459,0.004
+0.500,standard,3,ppv - mpv - mipv - lspv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,5000,0.030,0.008,2694.683,50.840,1083.879,22.935,45.719,0.700,0.442,0.004
