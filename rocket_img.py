@@ -27,19 +27,6 @@ def _generate_kernels(
     dilation: DilationType,
     random_state: Optional[int] = None
 ) -> dict:
-    """ Generate random convolutional kernels for ROCKET.
-
-    Args:
-        cin (int): input channels
-        input_size (int): input size (height/width)
-        cout (int): number of kernels to generate
-        convolution_type (ConvolutionType): type of convolution
-        candidate_sizes (np.ndarray): candidate kernel sizes
-        padding_mode (PaggingMode): padding mode
-
-    Returns:
-        dict: Dictionary containing generated kernels and biases.
-    """
 
     if random_state is not None:
         _set_random_seed(random_state)
@@ -152,20 +139,6 @@ class ROCKET(BaseEstimator, TransformerMixin):
             convolution_type: ConvolutionType = ConvolutionType.STANDARD,
             features_to_extract: list[FeatureType] = [FeatureType.PPV],
             random_state=None):
-        """ Initialize the ROCKET transformer.
-
-        Args:
-            weight_distribution_fn (Callable): Function to sample weights.
-            bias_distribution_fn (Callable): Function to sample biases.
-            cout (int, optional): Number of convolutional kernels. Defaults to 10000.
-            candidate_lengths (np.ndarray, optional): Candidate kernel sizes. Defaults to np.array((3,5,7)).
-            padding_mode (PaddingMode, optional): Padding mode. Defaults to PaddingMode.RANDOM.
-            dilation (Optional[int], optional): Dilation for the kernels. Defaults to None.
-            stride (int, optional): Stride for the convolutions. Defaults to 1.
-            convolution_type (ConvolutionType, optional): Type of convolution. Defaults to ConvolutionType.STANDARD.
-            feature_to_extract (list[FeatureType], optional): Features to extract. Defaults to [FeatureType.PPV].
-            random_state (Optional[int], optional): Random seed for reproducibility. Defaults to None.
-        """
 
         self.cout = cout
         self.candidate_lengths = candidate_lengths
@@ -244,12 +217,6 @@ class ROCKET(BaseEstimator, TransformerMixin):
 
 
     def _transform(self, X):
-        """Transform the input data using the generated convolutional kernels.
-        Args:
-            X (torch.Tensor): Input data of shape [B, C, H, W].
-        Returns:
-            torch.Tensor: Transformed data of shape [B, cout].
-        """
         batch_size, cin, _, input_size = X.shape
 
         # [B, cout]
