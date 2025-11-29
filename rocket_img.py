@@ -83,49 +83,38 @@ def _generate_kernels(
         else:
             bias = bias_distr_fn(c, cin, key[0], key[0])
 
+        # Generate weights
+        if convolution_type == ConvolutionType.SPATIAL:
+            # horizontal kernels
+            weights_1 = weight_distr_fn(c, cin, 1, key[0])
+            # vertical kernels
+            weights_2 = weight_distr_fn(c, cin, key[0], 1)
+            weights = (weights_1, weights_2)
+
+        elif convolution_type == ConvolutionType.DEPTHWISE_SEP:
+            # depthwise kernels
+            weights_1 = weight_distr_fn(
+                cin, cin, kernel_size, kernel_size, groups=cin)
+            # pointwise kernels
+            weights_2 = weight_distr_fn(c, cin, 1, 1)
+            weights = (weights_1, weights_2)
+
+        elif convolution_type == ConvolutionType.DEPTHWISE:
+            # depthwise kernels
+            weights_1 = weight_distr_fn(
+                c * cin, cin, kernel_size, kernel_size, groups=cin)
+            weights = (weights_1,)
+
+        else:
+            weights_1 = weight_distr_fn(c, cin, key[0], key[0])
+            weights = (weights_1,)
+
         groups[tuple(key.tolist())] = {
-            "weights": _generate_weights(c, cin, key[0], weight_distr_fn, convolution_type),
+            "weights": weights,
             "bias": bias,
         }
 
     return groups
-
-
-def _generate_weights(
-    cout: int,
-    cin: int,
-    kernel_size: int,
-    weight_distr_fn: Callable,
-    convolution_type: ConvolutionType = ConvolutionType.STANDARD
-):
-    if convolution_type == ConvolutionType.SPATIAL:
-        # horizontal kernels
-        weights_1 = weight_distr_fn(
-            cout, cin, 1, kernel_size)
-        # vertical kernels
-        weights_2 = weight_distr_fn(
-            cout, cin, kernel_size, 1)
-        return weights_1, weights_2
-
-    elif convolution_type == ConvolutionType.DEPTHWISE_SEP:
-        # depthwise kernels
-        weights_1 = weight_distr_fn(
-            cin, cin, kernel_size, kernel_size, groups=cin)
-        # pointwise kernels
-        weights_2 = weight_distr_fn(cout, cin, 1, 1)
-        return weights_1, weights_2
-
-    elif convolution_type == ConvolutionType.DEPTHWISE:
-        # depthwise kernels
-        weights_1 = weight_distr_fn(
-            cout * cin, cin, kernel_size, kernel_size, groups=cin)
-        return weights_1,
-
-    else:
-        weights = weight_distr_fn(
-            cout, cin, kernel_size, kernel_size)
-        return weights,
-
 
 class ROCKET(BaseEstimator, TransformerMixin):
     def __init__(

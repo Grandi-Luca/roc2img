@@ -115,9 +115,6 @@ def measure_performance(
     ridge = RidgeClassifier(alpha=0.1).fit(X_train_transformed, y_train)
     training_time_ridge = time.time() - start
 
-    # preds = ridge.predict(X_train_transformed)
-    # acc_train_ridge = accuracy_score(y_train, preds)
-
     # Accuracy ridge regression
     predictions_ridge = ridge.predict(X_test_transformed)
     acc_ridge = accuracy_score(y_test, predictions_ridge)
@@ -128,6 +125,7 @@ def measure_performance(
         'transform_time_test': round(transform_time_test, 3),
         'training_time_ridge': round(training_time_ridge, 3),
         'accuracy_ridge': acc_ridge,
+        'ridge_alpha': 0.1,
     }
 
 
@@ -150,7 +148,7 @@ def extract_data_from_loader(data_loader: DataLoader) -> torch.Tensor:
 if __name__ == "__main__":
 
     batch_size = 128
-    subset_percentage = 0.5
+    subset_percentage = 1
 
     all_results = []  # raccoglie tutte le esecuzioni
 
@@ -162,54 +160,57 @@ if __name__ == "__main__":
 
     rocket = ROCKET(
         cout=1000,
-        candidate_lengths=[3,5],
+        candidate_lengths=[3],
+        convolution_type=ConvolutionType.STANDARD,
         distr_pair=(DistributionType.REAL_RESNET101_WEIGHT, DistributionType.REAL_RESNET101_BIAS),
-        features_to_extract=[FeatureType.PPV],
+        features_to_extract=[FeatureType.PPV, FeatureType.MPV, FeatureType.MIPV],
         dilation=DilationType.UNIFORM_ROCKET,
     )
 
-    for convolution_type in [ConvolutionType.STANDARD, ConvolutionType.DEPTHWISE]:
+    for seed in [0, 1, 42]:
 
-        for seed in [0, 1, 42]:
+        rocket.random_state = seed
 
-            rocket.random_state = seed
-            rocket.convolution_type = convolution_type
+        metrics = measure_performance(
+            rocket, X_train, X_test, y_train, y_test)
+        all_results.append({
+            'subset_percentage': subset_percentage,
+            **rocket.get_params(),
+            **metrics,
+        })
 
-            metrics = measure_performance(
-                rocket, X_train, X_test, y_train, y_test)
-            all_results.append({
-                'subset_percentage': subset_percentage,
-                **rocket.get_params(),
-                **metrics,
-            })
-
-            # fix feature_to_extract representation for DataFrame
-            all_results[-1]['features_to_extract'] = " - ".join(
-                all_results[-1]['features_to_extract'])
-            # fix distr_pair representation for DataFrame
-            all_results[-1]['distr_pair'] = " - ".join(
-                [str(dp.name) for dp in all_results[-1]['distr_pair']])
-            all_results[-1]['weight_distribution'] = all_results[-1]['distr_pair'].split(" - ")[0]
-            all_results[-1]['bias_distribution'] = all_results[-1]['distr_pair'].split(" - ")[1]
-            all_results[-1]['candidate_lengths'] = " - ".join(
-                [str(cl) for cl in all_results[-1]['candidate_lengths']])
+        # fix feature_to_extract representation for DataFrame
+        all_results[-1]['features_to_extract'] = " - ".join(
+            all_results[-1]['features_to_extract'])
+        # fix distr_pair representation for DataFrame
+        all_results[-1]['distr_pair'] = " - ".join(
+            [str(dp.name) for dp in all_results[-1]['distr_pair']])
+        all_results[-1]['weight_distribution'] = all_results[-1]['distr_pair'].split(" - ")[0]
+        all_results[-1]['bias_distribution'] = all_results[-1]['distr_pair'].split(" - ")[1]
+        all_results[-1]['candidate_lengths'] = " - ".join(
+            [str(cl) for cl in all_results[-1]['candidate_lengths']])
 
     results_df = pd.DataFrame(all_results)
 
     metric_cols = ['model_fit_time', 'transform_time_train', 'transform_time_test',
                    'training_time_ridge', 'accuracy_ridge']
 
-    grouped_results = (
-        results_df
-        .groupby(['subset_percentage', 'convolution_type', 'candidate_lengths', 'features_to_extract', 'distr_pair', 'dilation', 'cout'])[metric_cols]
-        .agg(['mean', 'std'])
-        .round(3)
-    )
+    # grouped_results = (
+    #     results_df
+    #     .groupby(['subset_percentage', 'convolution_type', 'candidate_lengths', 'features_to_extract', 'distr_pair', 'dilation', 'cout', 'ridge_alpha'])[metric_cols]
+    #     .agg(['mean', 'std'])
+    #     .round(3)
+    # )
 
-    grouped_results.index.set_names(
-        ['subset_percentage', 'convolution_type', 'candidate_lengths', 'features_to_extract', 'distr_pair', 'dilation', 'cout'], inplace=True)
+    # grouped_results.index.set_names(
+    #     ['subset_percentage', 'convolution_type', 'candidate_lengths', 'features_to_extract', 'distr_pair', 'dilation', 'cout', 'ridge_alpha'], inplace=True)
 
-    grouped_results.to_csv(
-        './results/test_1.csv',
-        float_format='%.3f'
+    # grouped_results.to_csv(
+    #     './results/test_1.csv',
+    #     float_format='%.3f'
+    # )
+    results_df.to_csv(
+        './results/test_rocket_img.csv',
+        float_format='%.3f',
+        index=False
     )
