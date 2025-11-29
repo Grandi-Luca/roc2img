@@ -34,12 +34,18 @@ rocket = ROCKET(
     random_state=42
 )
 
-# Genera i kernel (fit)
+# Dati di esempio
 X_train = torch.rand(100, 3, 32, 32)  # [batch, channels, height, width]
+y_train = torch.randint(0, 10, (100,))  # 100
+X_test = torch.rand(20, 3, 32, 32)    # [batch, channels, height, width]
+y_test = torch.randint(0, 10, (20,))    # 20
+
+# Genera i kernel (fit)
 rocket.fit(X_train)
 
 # Trasforma i dati
 X_train_features = rocket.transform(X_train)  # Output: numpy array [100, cout]
+X_test_features = rocket.transform(X_test)    # Output: numpy array [20, cout]
 
 # Classifica con Ridge Regression
 from sklearn.linear_model import RidgeClassifier
