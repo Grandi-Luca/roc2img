@@ -94,7 +94,7 @@ def _generate_kernels(
         elif convolution_type == ConvolutionType.DEPTHWISE_SEP:
             # depthwise kernels
             weights_1 = weight_distr_fn(
-                cin, cin, kernel_size, kernel_size, groups=cin)
+                cin, cin, key[0], key[0], groups=cin)
             # pointwise kernels
             weights_2 = weight_distr_fn(c, cin, 1, 1)
             weights = (weights_1, weights_2)
@@ -102,7 +102,7 @@ def _generate_kernels(
         elif convolution_type == ConvolutionType.DEPTHWISE:
             # depthwise kernels
             weights_1 = weight_distr_fn(
-                c * cin, cin, kernel_size, kernel_size, groups=cin)
+                c * cin, cin, key[0], key[0], groups=cin)
             weights = (weights_1,)
 
         else:
