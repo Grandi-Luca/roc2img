@@ -8,7 +8,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 from collections.abc import Callable
 
-from typing import Optional 
+from typing import Optional, List
 
 from utils import ConvolutionType, PaddingMode, FeatureType, DilationType
 from utils import _set_random_seed, ResNetModel
@@ -120,7 +120,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
     def __init__(
             self,
             cout=10000,
-            candidate_lengths: list = [3, 5, 7],
+            candidate_lengths: list[int] = [3, 5, 7],
             padding_mode: PaddingMode = PaddingMode.RANDOM,
             distr_pair: tuple[DistributionType, DistributionType] = (DistributionType.GAUSSIAN_01, DistributionType.UNIFORM),
             dilation: DilationType = DilationType.UNIFORM_ROCKET,
@@ -241,7 +241,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
                 weight=var['weights'][0],
                 bias=var['bias'] if self.convolution_type in [
                     ConvolutionType.STANDARD, ConvolutionType.DEPTHWISE] else None,
-                stride=1,
+                stride=self.stride,
                 padding=padding_1,
                 dilation=dilation_1,
                 groups=group
@@ -253,7 +253,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
                     input=data,
                     weight=var['weights'][1],
                     bias=var['bias'],
-                    stride=1,
+                    stride=self.stride,
                     padding=padding_2,
                     dilation=dilation_2,
                     groups=1
