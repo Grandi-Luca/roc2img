@@ -101,8 +101,9 @@ def _real_resnet_weight_distr(cout: int, cin: int, kh: int, kw: int, groups: int
     assert KDE_MODELS['weight'] is not None, "KDE model for weights is not fitted yet. Extract the weights and then fit KDE model."
     samples = KDE_MODELS['weight'].sample(cout * (cin // groups) * kh * kw)
     samples = samples.reshape(cout, cin // groups, kh, kw).astype(np.float32)
+    samples = add_random_noise(torch.from_numpy(samples), noise_level=0)
     samples = samples - samples.mean(axis=(2, 3), keepdims=True)
-    return torch.from_numpy(samples)
+    return samples
 
 
 def _conv2d_bias_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
@@ -119,6 +120,11 @@ def _uniform_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> to
         -1, 1, size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
+def add_random_noise(tensor: torch.Tensor, noise_level: float) -> torch.Tensor:
+    mask = torch.rand_like(tensor) < 0.2 
+    noise = torch.randn_like(tensor) * noise_level
+    noise = noise * mask.float()
+    return tensor + noise
 
 #  ##### GAUSS DISTRIBUTIONS FOR RESNET BIASES (GLOBAL) #####
 def _approx_resnet18_bias_global_gauss_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:

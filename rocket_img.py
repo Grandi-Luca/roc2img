@@ -1,6 +1,7 @@
 import numpy as np
 
 import torch
+import random
 from torch.nn import functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
@@ -274,6 +275,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
             pos_mask = data > 0
             pos_count = pos_mask.sum(-1)
 
+
             if FeatureType.MPV in self.features_to_extract or FeatureType.MIPV in self.features_to_extract:
                 zero_mask = pos_count == 0
                 pos_count_clone = pos_count.to(torch.float32)
@@ -321,6 +323,30 @@ class ROCKET(BaseEstimator, TransformerMixin):
                     # LSPV = max run along N
                     lspv = run_lengths.max(dim=-1).values       # [B, K]
                     features_list.append(lspv)
+
+                # Computing Max Pooling
+                if feature == FeatureType.MAXPV:
+                    max_val = data.max(-1)
+                    maxpv = max_val.values
+                    features_list.append(maxpv)
+
+                # Computing Min Pooling
+                if feature == FeatureType.MINPV:
+                    min_val = data.min(-1)
+                    minpv = min_val.values
+                    features_list.append(minpv)
+
+                # Computing Generalized Mean Pooling
+                if feature == FeatureType.GMPV:
+                    p = 2.0
+                    gmpv = ( (data**p).mean(-1) ) **(1/p)
+                    features_list.append(gmpv)    
+
+                if feature == FeatureType.ENTROPY:
+                    eps = 1e-12
+                    p = torch.softmax(data, dim=-1)
+                    entropy = - (p * (p + eps).log()).sum(dim=-1)
+                    features_list.append(entropy)
 
             extracted_features = torch.cat(features_list, dim=1)
             e = s + extracted_features.shape[1]

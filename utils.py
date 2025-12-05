@@ -24,6 +24,10 @@ class FeatureType():
     MPV = 'mpv'
     LSPV = 'lspv'
     MIPV = 'mipv'
+    MAXPV = 'maxpv'
+    MINPV = 'minpv'
+    GMPV = 'gmpv'
+    ENTROPY = 'entropy'
 
 class DilationType():
     DILATED_1 = 1
