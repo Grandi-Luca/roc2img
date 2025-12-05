@@ -10,7 +10,7 @@ import torchvision.transforms as transforms
 import time
 
 import pandas as pd
-from sklearn.linear_model import RidgeClassifier
+from sklearn.linear_model import RidgeClassifierCV
 from sklearn.metrics import accuracy_score
 
 from typing import Optional
@@ -84,7 +84,8 @@ def measure_performance(
     X_train: torch.Tensor,
     X_test: torch.Tensor,
     y_train: np.ndarray,
-    y_test: np.ndarray
+    y_test: np.ndarray,
+    alphas: list[float],
 ) -> dict[str, Optional[float]]:
     """Measure the performance of a model on training and testing datasets.
 
@@ -109,10 +110,11 @@ def measure_performance(
     start = time.time()
     X_test_transformed = model.transform(X_test)
     transform_time_test = time.time() - start
+    print('Transformation completed.')
 
     # Tempo di training ridge regression
     start = time.time()
-    ridge = RidgeClassifier(alpha=0.1).fit(X_train_transformed, y_train)
+    ridge = RidgeClassifierCV(alphas=alphas).fit(X_train_transformed, y_train)
     training_time_ridge = time.time() - start
 
     # Accuracy ridge regression
@@ -125,7 +127,7 @@ def measure_performance(
         'transform_time_test': round(transform_time_test, 3),
         'training_time_ridge': round(training_time_ridge, 3),
         'accuracy_ridge': acc_ridge,
-        'ridge_alpha': 0.1,
+        'ridge_alpha': ridge.alpha_,
     }
 
 
@@ -159,7 +161,7 @@ if __name__ == "__main__":
 
 
     rocket = ROCKET(
-        cout=1000,
+        cout=10000,
         candidate_lengths=[3],
         convolution_type=ConvolutionType.STANDARD,
         distr_pair=(DistributionType.REAL_RESNET101_WEIGHT, DistributionType.REAL_RESNET101_BIAS),
@@ -172,7 +174,7 @@ if __name__ == "__main__":
         rocket.random_state = seed
 
         metrics = measure_performance(
-            rocket, X_train, X_test, y_train, y_test)
+            rocket, X_train, X_test, y_train, y_test, [0.1])
         all_results.append({
             'subset_percentage': subset_percentage,
             **rocket.get_params(),
@@ -193,7 +195,7 @@ if __name__ == "__main__":
     results_df = pd.DataFrame(all_results)
 
     metric_cols = ['model_fit_time', 'transform_time_train', 'transform_time_test',
-                   'training_time_ridge', 'accuracy_ridge']
+                'training_time_ridge', 'accuracy_ridge']
 
     # grouped_results = (
     #     results_df
@@ -209,8 +211,9 @@ if __name__ == "__main__":
     #     './results/test_1.csv',
     #     float_format='%.3f'
     # )
+
     results_df.to_csv(
-        './results/test_rocket_img.csv',
+        f'./results/test_10k_feature.csv',
         float_format='%.3f',
         index=False
     )
