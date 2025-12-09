@@ -294,8 +294,8 @@ class ROCKET(BaseEstimator, TransformerMixin):
                 if feature == FeatureType.MPV:
                     mpv_num = (data*pos_mask).sum(-1)
                     mpv = mpv_num / pos_count_clone
-                    # If no positive, set to -1
-                    mpv[zero_mask] = -1.0
+                    # If no positive, set to 0
+                    mpv[zero_mask] = 0
                     features_list.append(mpv)
 
                 # Computing MIPV
