@@ -1,8 +1,6 @@
 ,,,,,,,model_fit_time,model_fit_time,transform_time_train,transform_time_train,transform_time_test,transform_time_test,training_time_ridge,training_time_ridge,accuracy_ridge,accuracy_ridge
 ,,,,,,,mean,std,mean,std,mean,std,mean,std,mean,std
 subset_percentage,convolution_type,candidate_lengths,features_to_extract,distr_pair,dilation,cout,,,,,,,,,,
-0.500,depthwise,3,ppv - mpv - mipv - lspv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.011,0.001,1365.114,263.326,435.353,48.566,2.638,0.028,0.674,0.001
-0.500,standard,3,ppv - mpv - mipv - lspv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.011,0.002,465.159,15.849,176.565,10.408,2.612,0.087,0.678,0.000
 0.500,depthwise,3,ppv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.017,0.014,126.401,30.449,56.208,10.663,0.399,0.014,0.620,0.001
 0.500,standard,3,ppv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.009,0.001,30.755,0.812,12.563,0.296,0.420,0.011,0.627,0.003
 0.500,depthwise,3,lspv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.010,0.000,1157.910,82.271,516.489,24.052,0.417,0.022,0.536,0.005
@@ -12,6 +10,8 @@ subset_percentage,convolution_type,candidate_lengths,features_to_extract,distr_p
 0.500,standard,3,mipv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.009,0.001,37.360,0.861,15.532,0.171,0.428,0.008,0.563,0.001
 0.500,standard,3,mpv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.009,0.001,53.271,20.492,17.830,0.216,0.413,0.002,0.626,0.001
 0.500,depthwise,3,ppv - mpv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.010,0.001,198.282,58.351,125.802,3.959,0.957,0.245,0.657,0.005
-0.500,depthwise,3,ppv - mpv - mipv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.014,0.007,373.246,54.104,122.138,31.235,1.717,0.065,0.670,0.004
 0.500,standard,3,ppv - mpv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.009,0.001,43.341,3.949,29.392,1.687,1.047,0.010,0.662,0.003
+0.500,depthwise,3,ppv - mpv - mipv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.014,0.007,373.246,54.104,122.138,31.235,1.717,0.065,0.670,0.004
 0.500,standard,3,ppv - mpv - mipv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.009,0.001,90.197,2.704,36.254,0.750,1.804,0.059,0.679,0.001
+0.500,depthwise,3,ppv - mpv - mipv - lspv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.011,0.001,1365.114,263.326,435.353,48.566,2.638,0.028,0.674,0.001
+0.500,standard,3,ppv - mpv - mipv - lspv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.011,0.002,465.159,15.849,176.565,10.408,2.612,0.087,0.678,0.000
