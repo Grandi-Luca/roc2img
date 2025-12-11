@@ -1,149 +1,142 @@
 import numpy as np
 
 import torch
+import random
 from torch.nn import functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
 from sklearn.base import BaseEstimator, TransformerMixin
 
-from typing import List
+from collections.abc import Callable
 
-from utils import ConvolutionType, FeatureType
+from typing import Optional, List
+
+from utils import ConvolutionType, PaddingMode, FeatureType, DilationType
 from utils import _set_random_seed, ResNetModel
 from distributions import DistributionType, extract_weights_and_biases, fit_kde_models
 
 
-def _fit_dilations(input_length, num_kernels, num_features, kernel_size, max_dilations_per_kernel):
+def _generate_kernels(
+    cin: int,
+    input_size: int,
+    cout: int,
+    convolution_type: ConvolutionType,
+    candidate_sizes: list,
+    padding_mode: PaddingMode,
+    weight_distr_fn: Callable,
+    bias_distr_fn: Callable,
+    dilation: DilationType,
+    random_state: Optional[int] = None
+) -> dict:
 
-    assert num_kernels <= num_features, "Number of kernels must be less than or equal to number of features."
-    assert kernel_size > 1, "Kernel size must be greater than 1."
+    if random_state is not None:
+        _set_random_seed(random_state)
 
-    num_features_per_kernel = num_features // num_kernels
-    true_max_dilations_per_kernel = min(
-        num_features_per_kernel, max_dilations_per_kernel)
-    multiplier = num_features_per_kernel / true_max_dilations_per_kernel
+    groups = {}
 
-    max_exponent = np.log2((input_length - 1) / (kernel_size - 1))
+    # Indices of kernel with padding
+    if padding_mode == PaddingMode.ON:
+        candidate_pad = np.ones(cout, dtype=bool)
+    elif padding_mode == PaddingMode.OFF:
+        candidate_pad = np.zeros(cout, dtype=bool)
+    else:  # RANDOM
+        candidate_pad = np.random.randint(2, size=cout) == 1
 
-    dilations, num_features_per_dilation = \
-        np.unique(np.logspace(0, max_exponent, true_max_dilations_per_kernel, base=2).astype(np.int32),
-                  return_counts=True)
-    num_features_per_dilation = (
-        num_features_per_dilation * multiplier).astype(np.int32)
+    # Generate random kernel sizes based on candidate sizes (equal probability)
+    sizes = np.random.choice(candidate_sizes, cout)
 
-    remainder = num_features_per_kernel - np.sum(num_features_per_dilation)
-    i = 0
-    while remainder > 0:
-        num_features_per_dilation[i] += 1
-        remainder -= 1
-        i = (i + 1) % len(num_features_per_dilation)
+    # Generate dilations and paddings
+    dilations = np.zeros(cout)
+    paddings = np.zeros(cout)
+    for size in candidate_sizes:
+        num_ker = (sizes == size).sum()
+        if num_ker > 0:
+            # Generate dilations
+            if size == 1:
+                dilations[sizes == size] = 1
+            elif isinstance(dilation, int):
+                dilations[sizes == size] = dilation
+            else:
+                if dilation == DilationType.RANDOM_13:
+                    dilations[sizes == size] = np.random.choice([1,2,3], size=num_ker)
+                else:
+                    # Rocket dilation
+                    dilations[sizes == size] = 2 ** np.random.uniform(
+                        0, np.log2((input_size - 1) / (size - 1)), size=num_ker)
+            dilations[sizes == size] = np.int32(dilations[sizes == size])
 
-    return dilations, num_features_per_dilation
+            # Compute paddings for kernels with padding
+            paddings[(sizes == size) & candidate_pad] = (
+                (size - 1) * dilations[(sizes == size) & candidate_pad]) // 2
 
+    # Grouping kernel by key: <kernel_size, dilation, padding>
+    kernel_params = np.stack(
+        [sizes, dilations, paddings], axis=1).astype(np.int32)
+    unique_params, counts = np.unique(
+        kernel_params, axis=0, return_counts=True)
 
-def _extract_features(data: torch.Tensor, features_to_extract: List[FeatureType], output_length: int) -> torch.Tensor:
-    assert data.ndim == 3, "Data must be a 3D tensor [B, K, N]"
+    for key, c in zip(unique_params, counts):
 
-    # Positive indices
-    pos_mask = data > 0
-    pos_count = pos_mask.sum(-1)
+        # Generate random biases
+        if convolution_type == ConvolutionType.DEPTHWISE:
+            bias = bias_distr_fn(
+                c * cin, cin, key[0], key[0], groups=cin)
+        else:
+            bias = bias_distr_fn(c, cin, key[0], key[0])
 
-    if FeatureType.MPV in features_to_extract or FeatureType.MIPV in features_to_extract:
-        zero_mask = pos_count == 0
-        pos_count_clone = pos_count.to(torch.float32)
-        pos_count_clone[zero_mask] = 1  # to avoid division by zero
+        # Generate weights
+        if convolution_type == ConvolutionType.SPATIAL:
+            # horizontal kernels
+            weights_1 = weight_distr_fn(c, cin, 1, key[0])
+            # vertical kernels
+            weights_2 = weight_distr_fn(c, cin, key[0], 1)
+            weights = (weights_1, weights_2)
 
-    # Extract features
-    features_list = []
-    for feature in features_to_extract:
+        elif convolution_type == ConvolutionType.DEPTHWISE_SEP:
+            # depthwise kernels
+            weights_1 = weight_distr_fn(
+                cin, cin, key[0], key[0], groups=cin)
+            # pointwise kernels
+            weights_2 = weight_distr_fn(c, cin, 1, 1)
+            weights = (weights_1, weights_2)
 
-        # Computing PPV
-        if feature == FeatureType.PPV:
-            ppv = pos_count.to(torch.float32) / float(output_length)
-            features_list.append(ppv)
+        elif convolution_type == ConvolutionType.DEPTHWISE:
+            # depthwise kernels
+            weights_1 = weight_distr_fn(
+                c * cin, cin, key[0], key[0], groups=cin)
+            weights = (weights_1,)
 
-        # Computing MPV
-        if feature == FeatureType.MPV:
-            mpv_num = (data*pos_mask).sum(-1)
-            mpv = mpv_num / pos_count_clone
-            # If no positive, set to 0
-            mpv[zero_mask] = 0
-            features_list.append(mpv)
+        else:
+            weights_1 = weight_distr_fn(c, cin, key[0], key[0])
+            weights = (weights_1,)
 
-        # Computing MIPV
-        if feature == FeatureType.MIPV:
-            N = data.shape[-1]
-            idx = torch.arange(N, dtype=torch.float32)
-            mipv_num = pos_mask.to(torch.float32) @ idx   # [B, K]
-            mipv = mipv_num / pos_count_clone
-            mipv[zero_mask] = -1.0
-            features_list.append(mipv)
+        groups[tuple(key.tolist())] = {
+            "weights": weights,
+            "bias": bias,
+        }
 
-        # Computing LSPV
-        if feature == FeatureType.LSPV:
-            pos_int = pos_mask.to(torch.int32)          # [B, K, N]
-            # cumsum of True
-            cumsum_pos = pos_int.cumsum(dim=-1)         # [B, K, N]
-            # cumsum values at positions of False
-            zero_cumsum = (~pos_mask).to(torch.int32) * cumsum_pos
-            # Last cumsum value before each position
-            last_zero_cumsum = torch.cummax(zero_cumsum, dim=-1).values
-
-            # current run length = cumsum - last_zero_cumsum
-            run_lengths = cumsum_pos - last_zero_cumsum  # [B, K, N]
-
-            # LSPV = max run along N
-            lspv = run_lengths.max(dim=-1).values       # [B, K]
-            features_list.append(lspv)
-
-        # Computing Max Pooling
-        if feature == FeatureType.MAXPV:
-            max_val = data.max(-1)
-            maxpv = max_val.values
-            features_list.append(maxpv)
-
-        # Computing Min Pooling
-        if feature == FeatureType.MINPV:
-            min_val = data.min(-1)
-            minpv = min_val.values
-            features_list.append(minpv)
-
-        # Computing Generalized Mean Pooling
-        if feature == FeatureType.GMPV:
-            p = 2.0
-            gmpv = ((data**p).mean(-1)) ** (1/p)
-            features_list.append(gmpv)
-
-        if feature == FeatureType.ENTROPY:
-            eps = 1e-12
-            p = torch.softmax(data, dim=-1)
-            entropy = - (p * (p + eps).log()).sum(dim=-1)
-            features_list.append(entropy)
-
-    return torch.cat(features_list, dim=1)
-
+    return groups
 
 class ROCKET(BaseEstimator, TransformerMixin):
     def __init__(
-        self,
-        cout=100,
-        kernel_size=3,
-        distr_pair: tuple[DistributionType, DistributionType] = (
-            DistributionType.GAUSSIAN_01, DistributionType.UNIFORM),
-        stride: int = 1,
-        num_features: int = 10000,
-        max_dilations_per_kernel: int = 32,
-        features_to_extract: list[FeatureType] = [FeatureType.PPV],
-        random_state=None
-    ):
+            self,
+            cout=10000,
+            candidate_lengths: list[int] = [3, 5, 7],
+            padding_mode: PaddingMode = PaddingMode.RANDOM,
+            distr_pair: tuple[DistributionType, DistributionType] = (DistributionType.GAUSSIAN_01, DistributionType.UNIFORM),
+            dilation: DilationType = DilationType.UNIFORM_ROCKET,
+            stride: int = 1,
+            convolution_type: ConvolutionType = ConvolutionType.STANDARD,
+            features_to_extract: list[FeatureType] = [FeatureType.PPV],
+            random_state=None):
 
         self.cout = cout
+        self.candidate_lengths = candidate_lengths
+        self.padding_mode = padding_mode
         self.stride = stride
-        self.kernel_size = kernel_size
-        self.num_features = num_features
-        self.convolution_type = ConvolutionType.STANDARD
+        self.dilation = dilation
+        self.convolution_type = convolution_type
         self.distr_pair = distr_pair
-        self.max_dilations_per_kernel = max_dilations_per_kernel
 
         if len(features_to_extract) == 0:
             raise ValueError("At least one feature must be specified.")
@@ -162,124 +155,200 @@ class ROCKET(BaseEstimator, TransformerMixin):
             model = ResNetModel.RESNET101
         elif self.distr_pair[0] == DistributionType.REAL_RESNET152_WEIGHT:
             model = ResNetModel.RESNET152
-
+        
         if model is not None:
             w, b = extract_weights_and_biases(model)
             fit_kde_models(w, b)
+
+        self.conv_params = {}
 
     def fit(self, X, y=None):
         """Generate the random convolutional kernels.
 
         Args:
-            X (torch.Tensor): Input data of shape [B, num_kernels, H, W].
+            X (torch.Tensor): Input data of shape [B, C, H, W].
             y (torch.Tensor, optional): Parameter used just for compatibility. Defaults to None.
         """
         _, cin, _, input_size = X.shape
-        if self.random_state is not None:
-            _set_random_seed(self.random_state)
-
-        dilations, num_features_per_dilation = _fit_dilations(
-            input_size, self.cout, self.num_features, self.kernel_size, self.max_dilations_per_kernel)
-
-        # Generate random bias
-        bias = self.distr_pair[1].fn(
-            self.cout * sum(num_features_per_dilation), cin, self.kernel_size, self.kernel_size)
-
-        # Generate random weights
-        weights = self.distr_pair[0].fn(
-            self.cout, cin, self.kernel_size, self.kernel_size)
-
-        self.dilations = dilations
-        self.num_features_per_dilation = num_features_per_dilation
-        self.bias = bias
-        self.weights = weights
+        self.conv_params = _generate_kernels(
+            cin,
+            input_size,
+            self.cout,
+            self.convolution_type,
+            self.candidate_lengths,
+            self.padding_mode,
+            self.distr_pair[0].fn,
+            self.distr_pair[1].fn,
+            self.dilation,
+            self.random_state
+        )
 
     def transform(self, X):
         new_batch_size = 128
+        max_batch_size = 2**13
 
-        if isinstance(X, np.ndarray):
-            X = torch.from_numpy(X).float()
-        y = torch.zeros(X.shape[0], dtype=torch.int32)  # dummy labels
-        dataset = TensorDataset(X, y)
-        loader = DataLoader(
-            dataset, batch_size=new_batch_size, shuffle=False, num_workers=2)
+        batch_size, _, _, _ = X.shape
+        if (np.log2(batch_size) % 1 != 0 or batch_size > max_batch_size):
+            if isinstance(X, np.ndarray):
+                X = torch.from_numpy(X).float()
+            y = torch.zeros(X.shape[0], dtype=torch.int32)  # dummy labels
+            dataset = TensorDataset(X, y)
+            loader = DataLoader(dataset, batch_size=new_batch_size, shuffle=False, num_workers=2)
 
-        X_list = []
+            X_list = []
 
-        for X_batch, _ in loader:
-            X_batch_transformed = self._transform(X_batch)
-            X_list.append(X_batch_transformed.cpu())
-        return torch.cat(X_list, dim=0).numpy()
+            for X_batch, _ in loader:
+                X_batch_transformed = self._transform(X_batch)
+                X_list.append(X_batch_transformed.cpu())
+            return torch.cat(X_list, dim=0).numpy()
+
+        else:
+            return self._transform(X).cpu().numpy()
+
 
     def _transform(self, X):
-        batch_size, _, _, _ = X.shape
+        batch_size, cin, _, input_size = X.shape
 
-        total_features = np.sum(
-            self.num_features_per_dilation) * self.cout * len(self.features_to_extract)
-
-        # [B, total_features]
-        features = torch.zeros((batch_size, total_features))
+        # [B, cout]
+        features = torch.zeros(
+            (batch_size, len(self.features_to_extract) * self.cout))
 
         s = 0
-        for dil_idx, dilation in enumerate(self.dilations):
+        for (kernel_size, dilation, padding), var in self.conv_params.items():
 
-            num_features_cur_dilation = self.num_features_per_dilation[dil_idx]
-            num_features_prev_dilation = self.num_features_per_dilation[dil_idx -
-                                                                        1] if dil_idx > 0 else 0
+            output_length = ((input_size + (2 * padding)
+                              ) - ((kernel_size - 1) * dilation) - 1) // self.stride + 1
 
-            _padding0 = (dil_idx % 2) == 0
+            if self.convolution_type == ConvolutionType.SPATIAL:
+                padding_1, padding_2 = (0, padding), (padding, 0)
+                dilation_1, dilation_2 = (1, dilation), (dilation, 1)
+                group = 1
+            elif self.convolution_type == ConvolutionType.DEPTHWISE_SEP:
+                padding_1, padding_2 = (padding, padding), 0
+                dilation_1, dilation_2 = (dilation, dilation), 1
+                group = cin
+            elif self.convolution_type == ConvolutionType.DEPTHWISE:
+                padding_1 = (padding, padding)
+                dilation_1 = (dilation, dilation)
+                group = cin
+            else:
+                padding_1 = (padding, padding)
+                dilation_1 = (dilation, dilation)
+                group = 1
 
-            # Helper function to process convolution
-            def _process_conv(X, padding, num_repeats, bias_start_idx, bias_end_idx, additional_element=False):
-                padding = ((self.kernel_size - 1)
-                           * dilation) // 2 if padding else 0
+            # First convolution
+            data = F.conv2d(
+                input=X,
+                weight=var['weights'][0],
+                bias=var['bias'] if self.convolution_type in [
+                    ConvolutionType.STANDARD, ConvolutionType.DEPTHWISE] else None,
+                stride=self.stride,
+                padding=padding_1,
+                dilation=dilation_1,
+                groups=group
+            )
 
+            # Second convolution if convolution_type requires it
+            if self.convolution_type in [ConvolutionType.SPATIAL, ConvolutionType.DEPTHWISE_SEP]:
                 data = F.conv2d(
-                    input=X,
-                    weight=self.weights,
-                    padding=padding,
-                    dilation=dilation,
+                    input=data,
+                    weight=var['weights'][1],
+                    bias=var['bias'],
                     stride=self.stride,
+                    padding=padding_2,
+                    dilation=dilation_2,
                     groups=1
                 )
 
-                output_length = data.shape[-1]
+            # Reconstructing data if depthwise from [B, K*cin, H, W] to [B, K, cin*H*W]
+            if self.convolution_type == ConvolutionType.DEPTHWISE:
+                kernel_per_channel = data.shape[1] // cin
+                merged_kernels = []
+                for i in range(kernel_per_channel):
+                    merged_kernels.append(
+                        data[:, i::kernel_per_channel].flatten(1))
+                data = torch.stack(merged_kernels, dim=1)
 
-                if num_repeats > 1:
-                    data = data.repeat(1, num_repeats, 1, 1)
+            # [B, num_kernel_group, H*W]
+            data = data.flatten(2)
+            # Positive indices
+            pos_mask = data > 0
+            pos_count = pos_mask.sum(-1)
 
-                if additional_element:
-                    data = torch.cat((data, data[:, :1, :, :]), dim=1)
 
-                data = data.flatten(2)
-                data = data + \
-                    self.bias[bias_start_idx:bias_end_idx].view(1, -1, 1)
+            if FeatureType.MPV in self.features_to_extract or FeatureType.MIPV in self.features_to_extract:
+                zero_mask = pos_count == 0
+                pos_count_clone = pos_count.to(torch.float32)
+                pos_count_clone[zero_mask] = 1  # to avoid division by zero
 
-                return _extract_features(data, self.features_to_extract, output_length)
+            # Extract features
+            features_list = []
+            for feature in self.features_to_extract:
 
-            start_bias_idx = num_features_prev_dilation * self.cout
-            mid_bias_idx = start_bias_idx + (num_features_cur_dilation // 2) * \
-                self.cout + (num_features_cur_dilation % 2)
+                # Computing PPV
+                if feature == FeatureType.PPV:
+                    ppv = pos_count.to(torch.float32) / float(output_length)
+                    features_list.append(ppv)
 
-            extracted_features = _process_conv(
-                X,
-                _padding0,
-                num_features_cur_dilation // 2,
-                start_bias_idx,
-                mid_bias_idx,
-                (num_features_cur_dilation % 2 == 1)
-            )
+                # Computing MPV
+                if feature == FeatureType.MPV:
+                    mpv_num = (data*pos_mask).sum(-1)
+                    mpv = mpv_num / pos_count_clone
+                    # If no positive, set to 0
+                    mpv[zero_mask] = 0
+                    features_list.append(mpv)
 
-            if num_features_cur_dilation > 1:
-                end_bias_idx = mid_bias_idx + self.cout * \
-                    (num_features_cur_dilation // 2)
-                extracted_features_2 = _process_conv(
-                    X, not _padding0, num_features_cur_dilation // 2, mid_bias_idx, end_bias_idx
-                )
-                extracted_features = torch.cat(
-                    (extracted_features, extracted_features_2), dim=1
-                )
+                # Computing MIPV
+                if feature == FeatureType.MIPV:
+                    N = data.shape[-1]
+                    idx = torch.arange(N, dtype=torch.float32)
+                    mipv_num = pos_mask.to(torch.float32) @ idx   # [B, K]
+                    mipv = mipv_num / pos_count_clone
+                    mipv[zero_mask] = -1.0
+                    features_list.append(mipv)
 
+                # Computing LSPV
+                if feature == FeatureType.LSPV:
+                    pos_int = pos_mask.to(torch.int32)          # [B, K, N]
+                    # cumsum of True
+                    cumsum_pos = pos_int.cumsum(dim=-1)         # [B, K, N]
+                    # cumsum values at positions of False
+                    zero_cumsum = (~pos_mask).to(torch.int32) * cumsum_pos
+                    # Last cumsum value before each position
+                    last_zero_cumsum = torch.cummax(zero_cumsum, dim=-1).values
+
+                    # current run length = cumsum - last_zero_cumsum
+                    run_lengths = cumsum_pos - last_zero_cumsum  # [B, K, N]
+
+                    # LSPV = max run along N
+                    lspv = run_lengths.max(dim=-1).values       # [B, K]
+                    features_list.append(lspv)
+
+                # Computing Max Pooling
+                if feature == FeatureType.MAXPV:
+                    max_val = data.max(-1)
+                    maxpv = max_val.values
+                    features_list.append(maxpv)
+
+                # Computing Min Pooling
+                if feature == FeatureType.MINPV:
+                    min_val = data.min(-1)
+                    minpv = min_val.values
+                    features_list.append(minpv)
+
+                # Computing Generalized Mean Pooling
+                if feature == FeatureType.GMPV:
+                    p = 2.0
+                    gmpv = ( (data**p).mean(-1) ) **(1/p)
+                    features_list.append(gmpv)    
+
+                if feature == FeatureType.ENTROPY:
+                    eps = 1e-12
+                    p = torch.softmax(data, dim=-1)
+                    entropy = - (p * (p + eps).log()).sum(dim=-1)
+                    features_list.append(entropy)
+
+            extracted_features = torch.cat(features_list, dim=1)
             e = s + extracted_features.shape[1]
             features[:, s:e] = extracted_features
             s = e
