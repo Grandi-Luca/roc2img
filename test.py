@@ -9,17 +9,18 @@ import torchvision.transforms as transforms
 
 import time
 
-import pandas as pd
-from sklearn.linear_model import RidgeClassifierCV
+from sklearn.linear_model import RidgeClassifier
 from sklearn.metrics import accuracy_score
 
 from typing import Optional
 
-from rocket_img import ROCKET
+from roc2img import ROCKET
 
-from distributions import DistributionType, extract_weights_and_biases, fit_kde_models
+from distributions import DistributionType
 from utils import _set_random_seed
-from utils import ConvolutionType, FeatureType, PaddingMode, DilationType, ResNetModel
+from utils import ConvolutionType, FeatureType, DilationType
+
+import wandb
 
 
 def load_data(batch_size: int, subset_percentage: float = 1.0) -> tuple[DataLoader, DataLoader]:
@@ -36,14 +37,18 @@ def load_data(batch_size: int, subset_percentage: float = 1.0) -> tuple[DataLoad
     transform_train = transforms.Compose(
         [
             transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))]
+            transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                 (0.2023, 0.1994, 0.2010))
+        ]
     )
 
     # Preprocess the CIFAR-10 test dataset
     transform_test = transforms.Compose(
         [
             transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))]
+            transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                 (0.2023, 0.1994, 0.2010))
+        ]
     )
 
     train_set = torchvision.datasets.CIFAR10(
@@ -85,7 +90,6 @@ def measure_performance(
     X_test: torch.Tensor,
     y_train: np.ndarray,
     y_test: np.ndarray,
-    alphas: list[float],
 ) -> dict[str, Optional[float]]:
     """Measure the performance of a model on training and testing datasets.
 
@@ -100,7 +104,7 @@ def measure_performance(
     """
 
     start = time.time()
-    model.fit(torch.rand(1, 3, 32, 32))  # Dummy fit to initialize parameters
+    model.fit(X_train)
     model_fit_time = time.time() - start
 
     # Tempo di trasformazione (feature extraction)
@@ -110,11 +114,10 @@ def measure_performance(
     start = time.time()
     X_test_transformed = model.transform(X_test)
     transform_time_test = time.time() - start
-    print('Transformation completed.')
 
     # Tempo di training ridge regression
     start = time.time()
-    ridge = RidgeClassifierCV(alphas=alphas).fit(X_train_transformed, y_train)
+    ridge = RidgeClassifier(alpha=0.1).fit(X_train_transformed, y_train)
     training_time_ridge = time.time() - start
 
     # Accuracy ridge regression
@@ -127,7 +130,6 @@ def measure_performance(
         'transform_time_test': round(transform_time_test, 3),
         'training_time_ridge': round(training_time_ridge, 3),
         'accuracy_ridge': acc_ridge,
-        'ridge_alpha': ridge.alpha_,
     }
 
 
@@ -147,10 +149,11 @@ def extract_data_from_loader(data_loader: DataLoader) -> torch.Tensor:
         y_list.append(batch_labels)
     return torch.cat(X_list, dim=0), torch.cat(y_list, dim=0).numpy()
 
+
 if __name__ == "__main__":
 
     batch_size = 128
-    subset_percentage = 1
+    subset_percentage = .5
 
     all_results = []  # raccoglie tutte le esecuzioni
 
@@ -159,61 +162,45 @@ if __name__ == "__main__":
     X_train, y_train = extract_data_from_loader(train_loader)
     X_test, y_test = extract_data_from_loader(test_loader)
 
-
     rocket = ROCKET(
-        cout=10000,
-        candidate_lengths=[3],
-        convolution_type=ConvolutionType.STANDARD,
-        distr_pair=(DistributionType.REAL_RESNET101_WEIGHT, DistributionType.REAL_RESNET101_BIAS),
-        features_to_extract=[FeatureType.PPV, FeatureType.MPV, FeatureType.MIPV],
-        dilation=DilationType.UNIFORM_ROCKET,
+        cout=100,
+        num_features=5000,
+        max_dilations_per_kernel=32,      # Maximum dilations per kernel
+        distr_pair=(                        # Distributions for weights and biases
+            DistributionType.REAL_RESNET101_WEIGHT,
+            DistributionType.REAL_RESNET101_BIAS,
+        ),
+        # Features to extract
+        features_to_extract=[FeatureType.PPV, FeatureType.MPV,
+                             FeatureType.MIPV, FeatureType.LSPV],
     )
-
+    
     for seed in [0, 1, 42]:
 
         rocket.random_state = seed
 
-        metrics = measure_performance(
-            rocket, X_train, X_test, y_train, y_test, [0.1])
-        all_results.append({
+        config = {
             'subset_percentage': subset_percentage,
             **rocket.get_params(),
-            **metrics,
-        })
+        }
 
-        # fix feature_to_extract representation for DataFrame
-        all_results[-1]['features_to_extract'] = " - ".join(
-            all_results[-1]['features_to_extract'])
-        # fix distr_pair representation for DataFrame
-        all_results[-1]['distr_pair'] = " - ".join(
-            [str(dp.name) for dp in all_results[-1]['distr_pair']])
-        all_results[-1]['weight_distribution'] = all_results[-1]['distr_pair'].split(" - ")[0]
-        all_results[-1]['bias_distribution'] = all_results[-1]['distr_pair'].split(" - ")[1]
-        all_results[-1]['candidate_lengths'] = " - ".join(
-            [str(cl) for cl in all_results[-1]['candidate_lengths']])
+        # Convert enum values to their names for logging
+        config['distr_pair'] = (
+            config['distr_pair'][0].name,
+            config['distr_pair'][1].name,
+        )
 
-    results_df = pd.DataFrame(all_results)
+        run = wandb.init(
+            # Set the wandb entity where your project will be logged (generally your team name).
+            entity="luca-gr",
+            # Set the wandb project where this run will be logged.
+            project="rocket2img-multiple-dilation-per-kernel",
+            # Track hyperparameters and run metadata.
+            config=config,
+        )
 
-    metric_cols = ['model_fit_time', 'transform_time_train', 'transform_time_test',
-                'training_time_ridge', 'accuracy_ridge']
+        metrics = measure_performance(
+            rocket, X_train, X_test, y_train, y_test)
 
-    # grouped_results = (
-    #     results_df
-    #     .groupby(['subset_percentage', 'convolution_type', 'candidate_lengths', 'features_to_extract', 'distr_pair', 'dilation', 'cout', 'ridge_alpha'])[metric_cols]
-    #     .agg(['mean', 'std'])
-    #     .round(3)
-    # )
-
-    # grouped_results.index.set_names(
-    #     ['subset_percentage', 'convolution_type', 'candidate_lengths', 'features_to_extract', 'distr_pair', 'dilation', 'cout', 'ridge_alpha'], inplace=True)
-
-    # grouped_results.to_csv(
-    #     './results/test_1.csv',
-    #     float_format='%.3f'
-    # )
-
-    results_df.to_csv(
-        f'./results/test_10k_feature.csv',
-        float_format='%.3f',
-        index=False
-    )
+        run.log(metrics)
+        run.finish()
