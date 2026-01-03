@@ -1,17 +1,33 @@
-,,,,,,,model_fit_time,model_fit_time,transform_time_train,transform_time_train,transform_time_test,transform_time_test,training_time_ridge,training_time_ridge,accuracy_ridge,accuracy_ridge
+,,,,,,,model_fit_time,model_fit_time,transform_time_train,transform_time_train,transform_time_test,transform_time_test,training_time,training_time,accuracy,accuracy
 ,,,,,,,mean,std,mean,std,mean,std,mean,std,mean,std
 subset_percentage,convolution_type,candidate_lengths,features_to_extract,distr_pair,dilation,cout,,,,,,,,,,
-0.500,depthwise,3,ppv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.017,0.014,126.401,30.449,56.208,10.663,0.399,0.014,0.620,0.001
-0.500,standard,3,ppv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.009,0.001,30.755,0.812,12.563,0.296,0.420,0.011,0.627,0.003
-0.500,depthwise,3,lspv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.010,0.000,1157.910,82.271,516.489,24.052,0.417,0.022,0.536,0.005
-0.500,depthwise,3,mipv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.010,0.001,164.987,9.234,66.707,2.566,0.421,0.015,0.623,0.002
-0.500,depthwise,3,mpv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.009,0.000,209.959,75.132,68.734,12.680,0.401,0.016,0.629,0.002
-0.500,standard,3,lspv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.009,0.001,236.073,10.960,96.430,8.045,0.404,0.007,0.534,0.003
-0.500,standard,3,mipv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.009,0.001,37.360,0.861,15.532,0.171,0.428,0.008,0.563,0.001
-0.500,standard,3,mpv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.009,0.001,53.271,20.492,17.830,0.216,0.413,0.002,0.626,0.001
-0.500,depthwise,3,ppv - mpv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.010,0.001,198.282,58.351,125.802,3.959,0.957,0.245,0.657,0.005
-0.500,standard,3,ppv - mpv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.009,0.001,43.341,3.949,29.392,1.687,1.047,0.010,0.662,0.003
-0.500,depthwise,3,ppv - mpv - mipv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.014,0.007,373.246,54.104,122.138,31.235,1.717,0.065,0.670,0.004
-0.500,standard,3,ppv - mpv - mipv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.009,0.001,90.197,2.704,36.254,0.750,1.804,0.059,0.679,0.001
-0.500,depthwise,3,ppv - mpv - mipv - lspv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.011,0.001,1365.114,263.326,435.353,48.566,2.638,0.028,0.674,0.001
-0.500,standard,3,ppv - mpv - mipv - lspv,REAL_RESNET101 - REAL_RESNET101,uniform_rocket,1000,0.011,0.002,465.159,15.849,176.565,10.408,2.612,0.087,0.678,0.000
+0.500,depthwise,3,lspv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.040,0.015,1410.585,23.441,557.839,24.680,0.607,0.014,0.536,0.005
+0.500,depthwise,3,lspv - mipv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.033,0.016,1529.252,11.589,605.207,12.921,1.095,0.031,0.638,0.001
+0.500,depthwise,3,lspv - mipv - mpv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.029,0.008,1607.416,37.927,599.889,72.178,1.792,0.062,0.667,0.001
+0.500,depthwise,3,lspv - mipv - mpv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.024,0.002,1493.026,57.544,567.654,44.281,2.677,0.022,0.675,0.000
+0.500,depthwise,3,lspv - mipv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.025,0.004,1338.384,246.115,537.030,54.795,1.752,0.043,0.660,0.004
+0.500,depthwise,3,lspv - mpv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.044,0.025,1419.084,273.067,535.709,76.734,1.100,0.159,0.643,0.002
+0.500,depthwise,3,lspv - mpv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.024,0.003,1511.884,111.680,624.346,12.445,1.933,0.061,0.664,0.004
+0.500,depthwise,3,lspv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.029,0.004,1277.543,239.424,505.144,91.807,1.103,0.025,0.635,0.002
+0.500,depthwise,3,mipv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.043,0.023,243.307,4.476,95.398,2.826,0.580,0.010,0.623,0.002
+0.500,depthwise,3,mipv - mpv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.028,0.007,276.067,42.499,123.069,7.220,1.134,0.124,0.657,0.002
+0.500,depthwise,3,mipv - mpv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.031,0.014,318.815,14.539,123.761,1.423,1.703,0.023,0.671,0.002
+0.500,depthwise,3,mipv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.035,0.013,228.786,7.295,85.340,9.550,1.037,0.075,0.651,0.000
+0.500,depthwise,3,mpv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.034,0.011,276.714,13.722,89.139,32.194,0.542,0.126,0.631,0.001
+0.500,depthwise,3,mpv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.027,0.007,212.194,66.166,96.991,8.161,0.938,0.195,0.658,0.005
+0.500,depthwise,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.030,0.010,197.682,5.585,79.198,3.247,0.579,0.008,0.620,0.001
+0.500,standard,3,lspv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.029,0.008,388.543,21.100,94.063,12.007,0.479,0.142,0.534,0.003
+0.500,standard,3,lspv - mipv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.029,0.014,372.371,22.643,156.081,18.920,1.050,0.013,0.603,0.003
+0.500,standard,3,lspv - mipv - mpv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.028,0.008,391.145,42.304,133.298,14.974,1.707,0.040,0.663,0.004
+0.500,standard,3,lspv - mipv - mpv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.022,0.002,399.998,34.051,151.534,9.961,2.582,0.132,0.678,0.002
+0.500,standard,3,lspv - mipv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.023,0.001,399.076,50.577,147.398,28.684,1.615,0.106,0.661,0.003
+0.500,standard,3,lspv - mpv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.025,0.010,427.944,33.116,150.532,22.290,0.986,0.061,0.641,0.002
+0.500,standard,3,lspv - mpv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.020,0.005,348.794,61.109,132.499,11.542,1.650,0.010,0.668,0.001
+0.500,standard,3,lspv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.029,0.019,331.777,104.985,127.619,15.593,0.989,0.082,0.641,0.001
+0.500,standard,3,mipv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.021,0.007,46.188,4.827,19.843,2.161,0.539,0.038,0.563,0.001
+0.500,standard,3,mipv - mpv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.031,0.021,59.936,13.215,24.376,3.045,1.010,0.037,0.655,0.003
+0.500,standard,3,mipv - mpv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.042,0.018,48.302,10.998,18.150,1.807,1.667,0.012,0.678,0.001
+0.500,standard,3,mipv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.030,0.017,29.085,0.315,13.508,0.618,1.009,0.046,0.658,0.004
+0.500,standard,3,mpv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.022,0.005,57.287,8.145,19.493,3.623,0.554,0.005,0.629,0.001
+0.500,standard,3,mpv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.022,0.009,42.446,8.092,14.791,1.171,0.982,0.079,0.662,0.003
+0.500,standard,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.033,0.004,42.272,0.589,16.894,0.793,0.572,0.019,0.627,0.003
