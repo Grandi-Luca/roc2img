@@ -29,12 +29,16 @@ class FeatureType():
     GMPV = 'gmpv'
     ENTROPY = 'entropy'
 
+
 class DilationType():
     DILATED_1 = 1
     DILATED_2 = 2
     DILATED_3 = 3
     RANDOM_13 = 'random_1_3'
     UNIFORM_ROCKET = 'uniform_rocket'
+    RANDOM_02 = 'random_0_2'
+    RANDOM_03 = 'random_0_3'
+    RANDOM_04 = 'random_0_4'
 
 
 class ResNetModel():
@@ -42,6 +46,7 @@ class ResNetModel():
     RESNET50 = models.ResNet50_Weights.DEFAULT
     RESNET101 = models.ResNet101_Weights.DEFAULT
     RESNET152 = models.ResNet152_Weights.DEFAULT
+
 
 def _set_random_seed(seed):
     if seed is not None:

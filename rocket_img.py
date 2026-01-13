@@ -1,7 +1,6 @@
 import numpy as np
 
 import torch
-import random
 from torch.nn import functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
@@ -9,7 +8,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 from collections.abc import Callable
 
-from typing import Optional, List
+from typing import Optional
 
 from utils import ConvolutionType, PaddingMode, FeatureType, DilationType
 from utils import _set_random_seed, ResNetModel
@@ -59,6 +58,12 @@ def _generate_kernels(
             else:
                 if dilation == DilationType.RANDOM_13:
                     dilations[sizes == size] = np.random.choice([1,2,3], size=num_ker)
+                elif dilation == DilationType.RANDOM_02:
+                    dilations[sizes == size] = 2 ** np.random.choice([0,1], size=num_ker)
+                elif dilation == DilationType.RANDOM_03:
+                    dilations[sizes == size] = 2 ** np.random.choice([0,1,2], size=num_ker)
+                elif dilation == DilationType.RANDOM_04:
+                    dilations[sizes == size] = 2 ** np.random.choice([0,1,2,3], size=num_ker)
                 else:
                     # Rocket dilation
                     dilations[sizes == size] = 2 ** np.random.uniform(
@@ -117,17 +122,20 @@ def _generate_kernels(
 
     return groups
 
+
 class ROCKET(BaseEstimator, TransformerMixin):
     def __init__(
             self,
-            cout=10000,
-            candidate_lengths: list[int] = [3, 5, 7],
+            cout=1000,
+            candidate_lengths: list[int] = [3],
             padding_mode: PaddingMode = PaddingMode.RANDOM,
-            distr_pair: tuple[DistributionType, DistributionType] = (DistributionType.GAUSSIAN_01, DistributionType.UNIFORM),
+            distr_pair: tuple[DistributionType, DistributionType] = (
+                DistributionType.REAL_RESNET101_WEIGHT, DistributionType.REAL_RESNET101_BIAS),
             dilation: DilationType = DilationType.UNIFORM_ROCKET,
             stride: int = 1,
             convolution_type: ConvolutionType = ConvolutionType.STANDARD,
-            features_to_extract: list[FeatureType] = [FeatureType.PPV],
+            features_to_extract: list[FeatureType] = [
+                FeatureType.PPV, FeatureType.MPV, FeatureType.MIPV, FeatureType.LSPV],
             random_state=None):
 
         self.cout = cout
@@ -155,7 +163,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
             model = ResNetModel.RESNET101
         elif self.distr_pair[0] == DistributionType.REAL_RESNET152_WEIGHT:
             model = ResNetModel.RESNET152
-        
+
         if model is not None:
             w, b = extract_weights_and_biases(model)
             fit_kde_models(w, b)
@@ -185,26 +193,20 @@ class ROCKET(BaseEstimator, TransformerMixin):
 
     def transform(self, X):
         new_batch_size = 128
-        max_batch_size = 2**13
 
-        batch_size, _, _, _ = X.shape
-        if (np.log2(batch_size) % 1 != 0 or batch_size > max_batch_size):
-            if isinstance(X, np.ndarray):
-                X = torch.from_numpy(X).float()
-            y = torch.zeros(X.shape[0], dtype=torch.int32)  # dummy labels
-            dataset = TensorDataset(X, y)
-            loader = DataLoader(dataset, batch_size=new_batch_size, shuffle=False, num_workers=2)
+        if isinstance(X, np.ndarray):
+            X = torch.from_numpy(X).float()
+        y = torch.zeros(X.shape[0], dtype=torch.int32)  # dummy labels
+        dataset = TensorDataset(X, y)
+        loader = DataLoader(dataset, batch_size=new_batch_size,
+                            shuffle=False, num_workers=2)
 
-            X_list = []
+        X_list = []
 
-            for X_batch, _ in loader:
-                X_batch_transformed = self._transform(X_batch)
-                X_list.append(X_batch_transformed.cpu())
-            return torch.cat(X_list, dim=0).numpy()
-
-        else:
-            return self._transform(X).cpu().numpy()
-
+        for X_batch, _ in loader:
+            X_batch_transformed = self._transform(X_batch)
+            X_list.append(X_batch_transformed.cpu())
+        return torch.cat(X_list, dim=0).numpy()
 
     def _transform(self, X):
         batch_size, cin, _, input_size = X.shape
@@ -275,7 +277,6 @@ class ROCKET(BaseEstimator, TransformerMixin):
             pos_mask = data > 0
             pos_count = pos_mask.sum(-1)
 
-
             if FeatureType.MPV in self.features_to_extract or FeatureType.MIPV in self.features_to_extract:
                 zero_mask = pos_count == 0
                 pos_count_clone = pos_count.to(torch.float32)
@@ -291,7 +292,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
                     features_list.append(ppv)
 
                 # Computing MPV
-                if feature == FeatureType.MPV:
+                elif feature == FeatureType.MPV:
                     mpv_num = (data*pos_mask).sum(-1)
                     mpv = mpv_num / pos_count_clone
                     # If no positive, set to 0
@@ -299,7 +300,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
                     features_list.append(mpv)
 
                 # Computing MIPV
-                if feature == FeatureType.MIPV:
+                elif feature == FeatureType.MIPV:
                     N = data.shape[-1]
                     idx = torch.arange(N, dtype=torch.float32)
                     mipv_num = pos_mask.to(torch.float32) @ idx   # [B, K]
@@ -308,7 +309,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
                     features_list.append(mipv)
 
                 # Computing LSPV
-                if feature == FeatureType.LSPV:
+                elif feature == FeatureType.LSPV:
                     pos_int = pos_mask.to(torch.int32)          # [B, K, N]
                     # cumsum of True
                     cumsum_pos = pos_int.cumsum(dim=-1)         # [B, K, N]
@@ -325,24 +326,24 @@ class ROCKET(BaseEstimator, TransformerMixin):
                     features_list.append(lspv)
 
                 # Computing Max Pooling
-                if feature == FeatureType.MAXPV:
+                elif feature == FeatureType.MAXPV:
                     max_val = data.max(-1)
                     maxpv = max_val.values
                     features_list.append(maxpv)
 
                 # Computing Min Pooling
-                if feature == FeatureType.MINPV:
+                elif feature == FeatureType.MINPV:
                     min_val = data.min(-1)
                     minpv = min_val.values
                     features_list.append(minpv)
 
                 # Computing Generalized Mean Pooling
-                if feature == FeatureType.GMPV:
+                elif feature == FeatureType.GMPV:
                     p = 2.0
-                    gmpv = ( (data**p).mean(-1) ) **(1/p)
-                    features_list.append(gmpv)    
+                    gmpv = ((data**p).mean(-1)) ** (1/p)
+                    features_list.append(gmpv)
 
-                if feature == FeatureType.ENTROPY:
+                elif feature == FeatureType.ENTROPY:
                     eps = 1e-12
                     p = torch.softmax(data, dim=-1)
                     entropy = - (p * (p + eps).log()).sum(dim=-1)
@@ -354,3 +355,12 @@ class ROCKET(BaseEstimator, TransformerMixin):
             s = e
 
         return features
+
+    def get_params(self, deep=True):
+        params = super().get_params(deep=deep)
+        params['distr_pair'] = (
+            self.distr_pair[0].name,
+            self.distr_pair[1].name,
+        )
+        params['features_to_extract'] = sorted(params['features_to_extract'])
+        return params
