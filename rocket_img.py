@@ -25,6 +25,7 @@ def _generate_kernels(
     weight_distr_fn: Callable,
     bias_distr_fn: Callable,
     dilation: DilationType,
+    candidate_strides: list[int],
     random_state: Optional[int] = None
 ) -> dict:
 
@@ -43,6 +44,8 @@ def _generate_kernels(
 
     # Generate random kernel sizes based on candidate sizes (equal probability)
     sizes = np.random.choice(candidate_sizes, cout)
+
+    strides = np.random.choice(candidate_strides, cout)
 
     # Generate dilations and paddings
     dilations = np.zeros(cout)
@@ -76,7 +79,7 @@ def _generate_kernels(
 
     # Grouping kernel by key: <kernel_size, dilation, padding>
     kernel_params = np.stack(
-        [sizes, dilations, paddings], axis=1).astype(np.int32)
+        [sizes, dilations, paddings, strides], axis=1).astype(np.int32)
     unique_params, counts = np.unique(
         kernel_params, axis=0, return_counts=True)
 
@@ -132,7 +135,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
             distr_pair: tuple[DistributionType, DistributionType] = (
                 DistributionType.REAL_RESNET101_WEIGHT, DistributionType.REAL_RESNET101_BIAS),
             dilation: DilationType = DilationType.UNIFORM_ROCKET,
-            stride: int = 1,
+            candidate_strides: list[int] = [1],
             convolution_type: ConvolutionType = ConvolutionType.STANDARD,
             features_to_extract: list[FeatureType] = [
                 FeatureType.PPV, FeatureType.MPV, FeatureType.MIPV, FeatureType.LSPV],
@@ -141,7 +144,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
         self.cout = cout
         self.candidate_lengths = candidate_lengths
         self.padding_mode = padding_mode
-        self.stride = stride
+        self.candidate_strides = candidate_strides
         self.dilation = dilation
         self.convolution_type = convolution_type
         self.distr_pair = distr_pair
@@ -188,6 +191,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
             self.distr_pair[0].fn,
             self.distr_pair[1].fn,
             self.dilation,
+            self.candidate_strides,
             self.random_state
         )
 
@@ -211,15 +215,19 @@ class ROCKET(BaseEstimator, TransformerMixin):
     def _transform(self, X):
         batch_size, cin, _, input_size = X.shape
 
-        # [B, cout]
-        features = torch.zeros(
-            (batch_size, len(self.features_to_extract) * self.cout))
+        output_size = len(self.features_to_extract) * self.cout
+        if FeatureType.MAX2D in self.features_to_extract:
+            output_size = output_size - self.cout + 4 * self.cout
+        if FeatureType.AVG2D in self.features_to_extract:
+            output_size = output_size - self.cout + 4 * self.cout
 
+        features = torch.zeros((batch_size, output_size))
+        
         s = 0
-        for (kernel_size, dilation, padding), var in self.conv_params.items():
+        for (kernel_size, dilation, padding, stride), var in self.conv_params.items():
 
             output_length = ((input_size + (2 * padding)
-                              ) - ((kernel_size - 1) * dilation) - 1) // self.stride + 1
+                              ) - ((kernel_size - 1) * dilation) - 1) // stride + 1
 
             if self.convolution_type == ConvolutionType.SPATIAL:
                 padding_1, padding_2 = (0, padding), (padding, 0)
@@ -244,7 +252,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
                 weight=var['weights'][0],
                 bias=var['bias'] if self.convolution_type in [
                     ConvolutionType.STANDARD, ConvolutionType.DEPTHWISE] else None,
-                stride=self.stride,
+                stride=stride,
                 padding=padding_1,
                 dilation=dilation_1,
                 groups=group
@@ -256,7 +264,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
                     input=data,
                     weight=var['weights'][1],
                     bias=var['bias'],
-                    stride=self.stride,
+                    stride=stride,
                     padding=padding_2,
                     dilation=dilation_2,
                     groups=1
@@ -271,6 +279,16 @@ class ROCKET(BaseEstimator, TransformerMixin):
                         data[:, i::kernel_per_channel].flatten(1))
                 data = torch.stack(merged_kernels, dim=1)
 
+            features_list = []
+            # Computing Max pooling
+            if FeatureType.MAX2D in self.features_to_extract:
+                max2d = F.adaptive_max_pool2d(data, output_size=2).flatten(1)
+                features_list.append(max2d)
+
+            if FeatureType.AVG2D in self.features_to_extract:
+                avg2d = F.adaptive_avg_pool2d(data, output_size=2).flatten(1)
+                features_list.append(avg2d)
+
             # [B, num_kernel_group, H*W]
             data = data.flatten(2)
             # Positive indices
@@ -283,7 +301,6 @@ class ROCKET(BaseEstimator, TransformerMixin):
                 pos_count_clone[zero_mask] = 1  # to avoid division by zero
 
             # Extract features
-            features_list = []
             for feature in self.features_to_extract:
 
                 # Computing PPV
@@ -325,13 +342,13 @@ class ROCKET(BaseEstimator, TransformerMixin):
                     lspv = run_lengths.max(dim=-1).values       # [B, K]
                     features_list.append(lspv)
 
-                # Computing Max Pooling
+                # Computing Global Max Pooling
                 elif feature == FeatureType.MAXPV:
                     max_val = data.max(-1)
                     maxpv = max_val.values
                     features_list.append(maxpv)
 
-                # Computing Min Pooling
+                # Computing Global Min Pooling
                 elif feature == FeatureType.MINPV:
                     min_val = data.min(-1)
                     minpv = min_val.values

@@ -28,6 +28,8 @@ class FeatureType():
     MINPV = 'minpv'
     GMPV = 'gmpv'
     ENTROPY = 'entropy'
+    MAX2D = 'max2d'
+    AVG2D = 'avg2d'
 
 
 class DilationType():
