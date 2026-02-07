@@ -1,0 +1,5 @@
+,,,,,,,model_fit_time,model_fit_time,transform_time_train,transform_time_train,transform_time_test,transform_time_test,training_time,training_time,accuracy,accuracy
+,,,,,,,mean,std,mean,std,mean,std,mean,std,mean,std
+norm,subset_percentage,convolution_type,candidate_lengths,features_to_extract,distr_pair,dilation,cout,,,,,,,,,,
+True,1,standard,3,lspv - mipv - mpv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.020,0.004,921.588,16.611,184.499,3.306,4.516,0.160,0.707,0.003
+False,1,standard,3,lspv - mipv - mpv - ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.020,0.004,656.335,159.886,113.823,8.639,4.456,0.245,0.675,0.001

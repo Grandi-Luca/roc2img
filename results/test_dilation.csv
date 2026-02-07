@@ -1,33 +1,21 @@
-,,,,,,model_fit_time,model_fit_time,transform_time_train,transform_time_train,transform_time_test,transform_time_test,training_time_ridge,training_time_ridge,accuracy_ridge,accuracy_ridge
-,,,,,,mean,std,mean,std,mean,std,mean,std,mean,std
-subset_percentage,convolution_type,candidate_lengths,features_to_extract,distr_pair,dilation,,,,,,,,,,
-0.500,depthwise,3,ppv,real_resnet101 - real_resnet101,1,0.006,0.002,306.992,6.618,121.935,2.664,0.540,0.128,0.581,0.003
-0.500,depthwise,3,ppv,real_resnet101 - real_resnet101,2,0.007,0.003,285.961,2.067,116.374,3.177,0.613,0.030,0.591,0.006
-0.500,depthwise,3,ppv,real_resnet101 - real_resnet101,3,0.007,0.003,268.946,1.840,109.858,1.464,0.588,0.020,0.574,0.001
-0.500,depthwise,3,ppv,real_resnet101 - real_resnet101,random_1_3,0.006,0.001,297.125,6.599,118.583,1.614,0.647,0.053,0.613,0.001
-0.500,depthwise,3 - 5,ppv,real_resnet101 - real_resnet101,1,0.007,0.001,311.619,5.448,123.013,2.085,0.612,0.011,0.598,0.002
-0.500,depthwise,3 - 5,ppv,real_resnet101 - real_resnet101,2,0.012,0.007,276.897,3.405,112.012,2.915,0.608,0.010,0.601,0.001
-0.500,depthwise,3 - 5,ppv,real_resnet101 - real_resnet101,3,0.011,0.008,263.562,2.347,103.345,2.012,0.584,0.020,0.581,0.001
-0.500,depthwise,3 - 5,ppv,real_resnet101 - real_resnet101,random_1_3,0.021,0.013,287.065,4.114,113.207,2.376,0.586,0.014,0.619,0.008
-0.500,standard,3,ppv,real_resnet101 - real_resnet101,1,0.004,0.001,96.058,1.860,38.056,0.442,0.590,0.040,0.594,0.001
-0.500,standard,3,ppv,real_resnet101 - real_resnet101,2,0.007,0.005,84.367,1.436,34.237,0.605,0.521,0.117,0.595,0.004
-0.500,standard,3,ppv,real_resnet101 - real_resnet101,3,0.007,0.005,82.574,0.740,31.978,1.434,0.592,0.030,0.580,0.001
-0.500,standard,3,ppv,real_resnet101 - real_resnet101,random_1_3,0.007,0.004,83.791,0.644,33.545,0.365,0.592,0.017,0.620,0.004
-0.500,standard,3 - 5,ppv,real_resnet101 - real_resnet101,1,0.007,0.001,92.736,3.831,36.040,0.876,0.616,0.033,0.608,0.003
-0.500,standard,3 - 5,ppv,real_resnet101 - real_resnet101,2,0.007,0.000,84.816,0.458,33.932,0.356,0.598,0.025,0.601,0.000
-0.500,standard,3 - 5,ppv,real_resnet101 - real_resnet101,3,0.007,0.001,80.118,1.840,30.912,0.166,0.580,0.011,0.586,0.006
-0.500,standard,3 - 5,ppv,real_resnet101 - real_resnet101,random_1_3,0.009,0.001,67.190,1.781,27.357,1.571,0.606,0.010,0.620,0.006
-0.500,depthwise,3,ppv,real_resnet101 - real_resnet101,uniform_rocket,0.017,0.014,126.401,30.449,56.208,10.663,0.399,0.014,0.620,0.001
-0.500,standard,3,ppv,real_resnet101 - real_resnet101,uniform_rocket,0.009,0.001,30.755,0.812,12.563,0.296,0.420,0.011,0.627,0.003
-0.500,depthwise,3 - 5,ppv,real_resnet101 - real_resnet101,uniform_rocket,0.028,0.003,197.654,12.059,81.133,5.829,0.630,0.051,0.622,0.002
-0.500,standard,3 - 5,ppv,real_resnet101 - real_resnet101,uniform_rocket,0.023,0.009,29.392,3.614,11.735,1.124,0.583,0.080,0.621,0.005
-0.500,depthwise,3 - 5 - 7,ppv,real_resnet101 - real_resnet101,1,0.010,0.001,314.941,3.950,125.026,1.218,0.594,0.011,0.611,0.005
-0.500,depthwise,3 - 5 - 7,ppv,real_resnet101 - real_resnet101,2,0.010,0.002,283.613,1.843,111.063,2.447,0.624,0.029,0.603,0.002
-0.500,depthwise,3 - 5 - 7,ppv,real_resnet101 - real_resnet101,3,0.010,0.001,254.481,7.829,100.841,3.776,0.618,0.053,0.582,0.001
-0.500,depthwise,3 - 5 - 7,ppv,real_resnet101 - real_resnet101,random_1_3,0.013,0.001,269.758,14.830,105.403,6.732,0.573,0.047,0.615,0.003
-0.500,standard,3 - 5 - 7,ppv,real_resnet101 - real_resnet101,1,0.014,0.009,87.630,3.871,33.144,0.412,0.601,0.020,0.613,0.002
-0.500,standard,3 - 5 - 7,ppv,real_resnet101 - real_resnet101,2,0.015,0.009,81.240,3.070,32.731,1.074,0.608,0.007,0.602,0.005
-0.500,standard,3 - 5 - 7,ppv,real_resnet101 - real_resnet101,3,0.009,0.000,68.358,5.889,27.694,0.580,0.588,0.001,0.580,0.004
-0.500,standard,3 - 5 - 7,ppv,real_resnet101 - real_resnet101,random_1_3,0.012,0.001,54.533,2.486,20.865,1.377,0.602,0.054,0.619,0.004
-0.500,depthwise,3 - 5 - 7,ppv,real_resnet101 - real_resnet101,uniform_rocket,0.025,0.008,197.414,4.484,79.826,2.086,0.664,0.052,0.617,0.004
-0.500,standard,3 - 5 - 7,ppv,real_resnet101 - real_resnet101,uniform_rocket,0.021,0.008,41.893,2.326,16.990,0.990,0.599,0.008,0.619,0.003
+,,,,,,,model_fit_time,model_fit_time,transform_time_train,transform_time_train,transform_time_test,transform_time_test,training_time,training_time,accuracy,accuracy
+,,,,,,,mean,std,mean,std,mean,std,mean,std,mean,std
+subset_percentage,convolution_type,candidate_lengths,features_to_extract,distr_pair,dilation,cout,,,,,,,,,,
+0.500,depthwise,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",random_0_2,1000,0.025,0.009,274.537,0.962,110.505,0.876,0.621,0.054,0.601,0.005
+0.500,depthwise,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",random_0_3,1000,0.025,0.008,261.448,1.584,108.440,5.127,0.576,0.018,0.617,0.003
+0.500,depthwise,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",random_0_4,1000,0.017,0.001,250.372,9.736,97.851,3.207,0.597,0.033,0.622,0.002
+0.500,depthwise,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",random_1_3,1000,0.032,0.016,287.722,28.451,109.299,4.232,0.573,0.013,0.613,0.001
+0.500,standard,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",random_0_2,1000,0.024,0.003,78.926,2.148,31.300,0.604,0.580,0.005,0.607,0.005
+0.500,standard,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",random_0_3,1000,0.020,0.019,75.938,1.953,30.164,0.929,0.568,0.010,0.622,0.002
+0.500,standard,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",random_0_4,1000,0.013,0.006,69.852,1.622,26.972,1.753,0.569,0.012,0.626,0.002
+0.500,standard,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",random_1_3,1000,0.019,0.007,75.368,1.918,29.941,0.330,0.568,0.021,0.620,0.004
+0.500,depthwise,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",1,0.006,0.002,306.992,6.618,121.935,2.664,0.540,0.128,0.581,0.003
+0.500,depthwise,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",2,0.007,0.003,285.961,2.067,116.374,3.177,0.613,0.030,0.591,0.006
+0.500,depthwise,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",3,0.007,0.003,268.946,1.840,109.858,1.464,0.588,0.020,0.574,0.001
+0.500,depthwise,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",random_1_3,0.006,0.001,297.125,6.599,118.583,1.614,0.647,0.053,0.613,0.001
+0.500,standard,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",1,0.004,0.001,96.058,1.860,38.056,0.442,0.590,0.040,0.594,0.001
+0.500,standard,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",2,0.007,0.005,84.367,1.436,34.237,0.605,0.521,0.117,0.595,0.004
+0.500,standard,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",3,0.007,0.005,82.574,0.740,31.978,1.434,0.592,0.030,0.580,0.001
+0.500,standard,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",random_1_3,0.007,0.004,83.791,0.644,33.545,0.365,0.592,0.017,0.620,0.004
+0.500,depthwise,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.044,0.024,217.681,12.531,85.530,5.148,0.601,0.020,0.620,0.001
+0.500,standard,3,ppv,"('REAL_RESNET101', 'REAL_RESNET101')",uniform_rocket,1000,0.040,0.013,45.605,3.311,18.544,0.909,0.570,0.008,0.627,0.003

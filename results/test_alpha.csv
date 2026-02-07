@@ -1,0 +1,7 @@
+batch_size,candidate_lengths,candidate_strides,convolution_type,cout,device,dilation,distr_pair,features_to_extract,padding_mode,random_state,model_fit_time,transform_time_train,transform_time_test,training_time,solver,accuracy,num_params,alpha
+128,3,1,standard,1000,cuda,uniform_rocket,"('REAL_RESNET101', 'REAL_RESNET101')",lspv - mipv - mpv - ppv,random,0,0.457,47.616,10.292,317.97,auto,0.7036,4000,1.0
+128,3,1,standard,1000,cuda,uniform_rocket,"('REAL_RESNET101', 'REAL_RESNET101')",lspv - mipv - mpv - ppv,random,1,0.034,47.977,10.049,320.039,auto,0.7059,4000,1.0
+128,3,1,standard,1000,cuda,uniform_rocket,"('REAL_RESNET101', 'REAL_RESNET101')",lspv - mipv - mpv - ppv,random,42,0.024,49.151,10.241,314.951,auto,0.7084,4000,1.0
+128,3,1,standard,1000,cuda,uniform_rocket,"('REAL_RESNET101', 'REAL_RESNET101')",lspv - mipv - mpv - ppv,random,0,0.498,47.485,10.322,5.34,auto,0.7037,4000,0.1
+128,3,1,standard,1000,cuda,uniform_rocket,"('REAL_RESNET101', 'REAL_RESNET101')",lspv - mipv - mpv - ppv,random,1,0.022,47.922,10.09,4.799,auto,0.7077,4000,0.1
+128,3,1,standard,1000,cuda,uniform_rocket,"('REAL_RESNET101', 'REAL_RESNET101')",lspv - mipv - mpv - ppv,random,42,0.026,48.884,10.14,4.652,auto,0.7097,4000,0.1
