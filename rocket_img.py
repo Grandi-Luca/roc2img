@@ -15,9 +15,22 @@ from utils import _set_random_seed, ResNetModel
 from distributions import DistributionType, extract_weights_and_biases, fit_kde_models
 
 
+def _sample_rocket_dilation(input_dim: int, kernel_size: int, num: int) -> np.ndarray:
+    """Sample random dilations for ROCKET kernels using vectorized operations."""
+    if kernel_size <= 1:
+        return np.ones(num, dtype=np.int32)
+    
+    max_dilation = (input_dim - 1) / float(kernel_size - 1)
+    if max_dilation <= 1.0:
+        return np.ones(num, dtype=np.int32)
+    
+    upper = float(np.log2(max_dilation))
+    return np.int32(2 ** np.random.uniform(0.0, upper, size=num))
+
+
 def _generate_kernels(
     cin: int,
-    input_size: int,
+    input_hw: tuple[int, int] | int,
     cout: int,
     convolution_type: ConvolutionType,
     candidate_sizes: list,
@@ -26,102 +39,84 @@ def _generate_kernels(
     bias_distr_fn: Callable,
     dilation: DilationType,
     candidate_strides: list[int],
+    device: Optional[torch.device] = None,
     random_state: Optional[int] = None
 ) -> dict:
 
     if random_state is not None:
         _set_random_seed(random_state)
 
-    groups = {}
+    if isinstance(input_hw, int):
+        input_h, input_w = input_hw, input_hw
+    else:
+        input_h, input_w = input_hw
 
-    # Indices of kernel with padding
-    if padding_mode == PaddingMode.ON:
-        candidate_pad = np.ones(cout, dtype=bool)
-    elif padding_mode == PaddingMode.OFF:
-        candidate_pad = np.zeros(cout, dtype=bool)
-    else:  # RANDOM
-        candidate_pad = np.random.randint(2, size=cout) == 1
+    # Generate padding mask
+    candidate_pad = {
+        PaddingMode.ON: np.ones(cout, dtype=bool),
+        PaddingMode.OFF: np.zeros(cout, dtype=bool),
+        PaddingMode.RANDOM: np.random.randint(2, size=cout, dtype=bool)
+    }[padding_mode]
 
-    # Generate random kernel sizes based on candidate sizes (equal probability)
-    sizes = np.random.choice(candidate_sizes, cout)
-
+    # Generate random kernel parameters
+    kernel_sizes = np.random.choice(candidate_sizes, cout)
     strides = np.random.choice(candidate_strides, cout)
 
-    # Generate dilations and paddings
-    dilations = np.zeros(cout)
-    paddings = np.zeros(cout)
+    # Initialize arrays for dilations
+    dilations_h = np.ones(cout, dtype=np.int32)
+    dilations_w = np.ones(cout, dtype=np.int32)
+    
+    # Compute dilations for each unique size
     for size in candidate_sizes:
-        num_ker = (sizes == size).sum()
-        if num_ker > 0:
-            # Generate dilations
-            if size == 1:
-                dilations[sizes == size] = 1
-            elif isinstance(dilation, int):
-                dilations[sizes == size] = dilation
-            else:
-                if dilation == DilationType.RANDOM_13:
-                    dilations[sizes == size] = np.random.choice([1,2,3], size=num_ker)
-                elif dilation == DilationType.RANDOM_02:
-                    dilations[sizes == size] = 2 ** np.random.choice([0,1], size=num_ker)
-                elif dilation == DilationType.RANDOM_03:
-                    dilations[sizes == size] = 2 ** np.random.choice([0,1,2], size=num_ker)
-                elif dilation == DilationType.RANDOM_04:
-                    dilations[sizes == size] = 2 ** np.random.choice([0,1,2,3], size=num_ker)
-                else:
-                    # Rocket dilation
-                    dilations[sizes == size] = 2 ** np.random.uniform(
-                        0, np.log2((input_size - 1) / (size - 1)), size=num_ker)
-            dilations[sizes == size] = np.int32(dilations[sizes == size])
+        mask = kernel_sizes == size
+        num_ker = mask.sum()
+        if num_ker == 0:
+            continue
 
-            # Compute paddings for kernels with padding
-            paddings[(sizes == size) & candidate_pad] = (
-                (size - 1) * dilations[(sizes == size) & candidate_pad]) // 2
-
-    # Grouping kernel by key: <kernel_size, dilation, padding>
-    kernel_params = np.stack(
-        [sizes, dilations, paddings, strides], axis=1).astype(np.int32)
-    unique_params, counts = np.unique(
-        kernel_params, axis=0, return_counts=True)
-
-    for key, c in zip(unique_params, counts):
-
-        # Generate random biases
-        if convolution_type == ConvolutionType.DEPTHWISE:
-            bias = bias_distr_fn(
-                c * cin, cin, key[0], key[0], groups=cin)
-        else:
-            bias = bias_distr_fn(c, cin, key[0], key[0])
-
-        # Generate weights
         if convolution_type == ConvolutionType.SPATIAL:
-            # horizontal kernels
-            weights_1 = weight_distr_fn(c, cin, 1, key[0])
-            # vertical kernels
-            weights_2 = weight_distr_fn(c, cin, key[0], 1)
-            weights = (weights_1, weights_2)
-
-        elif convolution_type == ConvolutionType.DEPTHWISE_SEP:
-            # depthwise kernels
-            weights_1 = weight_distr_fn(
-                cin, cin, key[0], key[0], groups=cin)
-            # pointwise kernels
-            weights_2 = weight_distr_fn(c, cin, 1, 1)
-            weights = (weights_1, weights_2)
-
-        elif convolution_type == ConvolutionType.DEPTHWISE:
-            # depthwise kernels
-            weights_1 = weight_distr_fn(
-                c * cin, cin, key[0], key[0], groups=cin)
-            weights = (weights_1,)
-
+            dilations_h[mask] = _sample_rocket_dilation(input_h, size, num_ker)
+            dilations_w[mask] = _sample_rocket_dilation(input_w, size, num_ker)
         else:
-            weights_1 = weight_distr_fn(c, cin, key[0], key[0])
-            weights = (weights_1,)
+            d = _sample_rocket_dilation(min(input_h, input_w), size, num_ker)
+            dilations_h[mask] = d
+            dilations_w[mask] = d
 
-        groups[tuple(key.tolist())] = {
-            "weights": weights,
-            "bias": bias,
-        }
+    # Compute paddings vectorized
+    paddings_h = np.where(candidate_pad, ((kernel_sizes - 1) * dilations_h) // 2, 0)
+    paddings_w = np.where(candidate_pad, ((kernel_sizes - 1) * dilations_w) // 2, 0)
+
+    # Group kernels by unique parameter combinations
+    kernel_params = np.column_stack([kernel_sizes, dilations_h, dilations_w, paddings_h, paddings_w, strides])
+    unique_params, counts = np.unique(kernel_params, axis=0, return_counts=True)
+
+    # Generate weights and biases for each unique parameter group
+    groups = {}
+    for key, count in zip(unique_params, counts):
+        kernel_size = key[0]
+        
+        # Generate biases
+        if convolution_type == ConvolutionType.DEPTHWISE:
+            bias = bias_distr_fn(count * cin, cin, kernel_size, kernel_size, groups=cin).to(device)
+        else:
+            bias = bias_distr_fn(count, cin, kernel_size, kernel_size).to(device)
+
+        # Generate weights based on convolution type
+        if convolution_type == ConvolutionType.SPATIAL:
+            weights = (
+                weight_distr_fn(count, cin, 1, kernel_size).to(device),
+                weight_distr_fn(count, cin, kernel_size, 1).to(device)
+            )
+        elif convolution_type == ConvolutionType.DEPTHWISE_SEP:
+            weights = (
+                weight_distr_fn(cin, cin, kernel_size, kernel_size, groups=cin).to(device),
+                weight_distr_fn(count, cin, 1, 1).to(device)
+            )
+        elif convolution_type == ConvolutionType.DEPTHWISE:
+            weights = (weight_distr_fn(count * cin, cin, kernel_size, kernel_size, groups=cin).to(device),)
+        else:  # STANDARD
+            weights = (weight_distr_fn(count, cin, kernel_size, kernel_size).to(device),)
+
+        groups[tuple(key.tolist())] = {"weights": weights, "bias": bias}
 
     return groups
 
@@ -139,6 +134,8 @@ class ROCKET(BaseEstimator, TransformerMixin):
             convolution_type: ConvolutionType = ConvolutionType.STANDARD,
             features_to_extract: list[FeatureType] = [
                 FeatureType.PPV, FeatureType.MPV, FeatureType.MIPV, FeatureType.LSPV],
+            device: Optional[torch.device] = None,
+            batch_size: int = 128,
             random_state=None):
 
         self.cout = cout
@@ -148,6 +145,10 @@ class ROCKET(BaseEstimator, TransformerMixin):
         self.dilation = dilation
         self.convolution_type = convolution_type
         self.distr_pair = distr_pair
+
+        self.batch_size = batch_size
+
+        self.device = device
 
         if len(features_to_extract) == 0:
             raise ValueError("At least one feature must be specified.")
@@ -180,10 +181,10 @@ class ROCKET(BaseEstimator, TransformerMixin):
             X (torch.Tensor): Input data of shape [B, C, H, W].
             y (torch.Tensor, optional): Parameter used just for compatibility. Defaults to None.
         """
-        _, cin, _, input_size = X.shape
+        _, cin, input_h, input_w = X.shape
         self.conv_params = _generate_kernels(
             cin,
-            input_size,
+            (input_h, input_w),
             self.cout,
             self.convolution_type,
             self.candidate_lengths,
@@ -192,28 +193,31 @@ class ROCKET(BaseEstimator, TransformerMixin):
             self.distr_pair[1].fn,
             self.dilation,
             self.candidate_strides,
+            self.device,
             self.random_state
         )
 
     def transform(self, X):
-        new_batch_size = 128
+        if not isinstance(X, DataLoader):
 
-        if isinstance(X, np.ndarray):
-            X = torch.from_numpy(X).float()
-        y = torch.zeros(X.shape[0], dtype=torch.int32)  # dummy labels
-        dataset = TensorDataset(X, y)
-        loader = DataLoader(dataset, batch_size=new_batch_size,
-                            shuffle=False, num_workers=2)
+            if isinstance(X, np.ndarray):
+                X = torch.from_numpy(X).float()
+            y = torch.zeros(X.shape[0], dtype=torch.int32)  # dummy labels
+            dataset = TensorDataset(X, y)
+            loader = DataLoader(dataset, batch_size=self.batch_size,
+                                shuffle=False, num_workers=2)
+        else:
+            loader = X
 
         X_list = []
 
         for X_batch, _ in loader:
-            X_batch_transformed = self._transform(X_batch)
+            X_batch_transformed = self._transform(X_batch.to(self.device))
             X_list.append(X_batch_transformed.cpu())
         return torch.cat(X_list, dim=0).numpy()
 
     def _transform(self, X):
-        batch_size, cin, _, input_size = X.shape
+        batch_size, cin, _, _ = X.shape
 
         output_size = len(self.features_to_extract) * self.cout
         if FeatureType.MAX2D in self.features_to_extract:
@@ -224,26 +228,25 @@ class ROCKET(BaseEstimator, TransformerMixin):
         features = torch.zeros((batch_size, output_size))
         
         s = 0
-        for (kernel_size, dilation, padding, stride), var in self.conv_params.items():
+        for key, var in self.conv_params.items():
 
-            output_length = ((input_size + (2 * padding)
-                              ) - ((kernel_size - 1) * dilation) - 1) // stride + 1
+            _, dilation_h, dilation_w, padding_h, padding_w, stride = key
 
             if self.convolution_type == ConvolutionType.SPATIAL:
-                padding_1, padding_2 = (0, padding), (padding, 0)
-                dilation_1, dilation_2 = (1, dilation), (dilation, 1)
+                padding_1, padding_2 = (0, padding_w), (padding_h, 0)
+                dilation_1, dilation_2 = (1, dilation_w), (dilation_h, 1)
                 group = 1
             elif self.convolution_type == ConvolutionType.DEPTHWISE_SEP:
-                padding_1, padding_2 = (padding, padding), 0
-                dilation_1, dilation_2 = (dilation, dilation), 1
+                padding_1, padding_2 = (padding_h, padding_w), 0
+                dilation_1, dilation_2 = (dilation_h, dilation_w), 1
                 group = cin
             elif self.convolution_type == ConvolutionType.DEPTHWISE:
-                padding_1 = (padding, padding)
-                dilation_1 = (dilation, dilation)
+                padding_1 = (padding_h, padding_w)
+                dilation_1 = (dilation_h, dilation_w)
                 group = cin
             else:
-                padding_1 = (padding, padding)
-                dilation_1 = (dilation, dilation)
+                padding_1 = (padding_h, padding_w)
+                dilation_1 = (dilation_h, dilation_w)
                 group = 1
 
             # First convolution
@@ -291,6 +294,7 @@ class ROCKET(BaseEstimator, TransformerMixin):
 
             # [B, num_kernel_group, H*W]
             data = data.flatten(2)
+            N = data.shape[-1]
             # Positive indices
             pos_mask = data > 0
             pos_count = pos_mask.sum(-1)
@@ -305,8 +309,9 @@ class ROCKET(BaseEstimator, TransformerMixin):
 
                 # Computing PPV
                 if feature == FeatureType.PPV:
-                    ppv = pos_count.to(torch.float32) / float(output_length)
+                    ppv = pos_count.to(torch.float32) / float(N)
                     features_list.append(ppv)
+                    del ppv
 
                 # Computing MPV
                 elif feature == FeatureType.MPV:
@@ -315,15 +320,16 @@ class ROCKET(BaseEstimator, TransformerMixin):
                     # If no positive, set to 0
                     mpv[zero_mask] = 0
                     features_list.append(mpv)
+                    del mpv_num, mpv
 
                 # Computing MIPV
                 elif feature == FeatureType.MIPV:
-                    N = data.shape[-1]
-                    idx = torch.arange(N, dtype=torch.float32)
+                    idx = torch.arange(N, dtype=torch.float32, device=data.device)
                     mipv_num = pos_mask.to(torch.float32) @ idx   # [B, K]
                     mipv = mipv_num / pos_count_clone
                     mipv[zero_mask] = -1.0
                     features_list.append(mipv)
+                    del mipv_num, mipv
 
                 # Computing LSPV
                 elif feature == FeatureType.LSPV:
@@ -341,24 +347,23 @@ class ROCKET(BaseEstimator, TransformerMixin):
                     # LSPV = max run along N
                     lspv = run_lengths.max(dim=-1).values       # [B, K]
                     features_list.append(lspv)
+                    del pos_int, cumsum_pos, zero_cumsum, last_zero_cumsum, run_lengths, lspv
 
                 # Computing Global Max Pooling
                 elif feature == FeatureType.MAXPV:
-                    max_val = data.max(-1)
-                    maxpv = max_val.values
-                    features_list.append(maxpv)
+                    features_list.append(data.max(-1).values)
 
                 # Computing Global Min Pooling
                 elif feature == FeatureType.MINPV:
-                    min_val = data.min(-1)
-                    minpv = min_val.values
-                    features_list.append(minpv)
+                    features_list.append(data.min(-1).values)
+
 
                 # Computing Generalized Mean Pooling
                 elif feature == FeatureType.GMPV:
                     p = 2.0
                     gmpv = ((data**p).mean(-1)) ** (1/p)
                     features_list.append(gmpv)
+                    del gmpv
 
                 elif feature == FeatureType.ENTROPY:
                     eps = 1e-12
