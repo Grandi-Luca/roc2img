@@ -1,7 +1,8 @@
 /.DS_Store
 /.venv
-/__pycache__
 /data
 *.out
 wandb/
-ADNI/
+__pycache__/
+*/__pycache__/
+*/checkpoints/

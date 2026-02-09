@@ -26,9 +26,9 @@ MEAN_CIFAR100 = (0.5071, 0.4867, 0.4408)
 def load_mnist_data() -> tuple[Dataset, Dataset]:
     transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
 
-    train_set = datasets.MNIST(root='./data/', train=True, download=True, transform=transform)
+    train_set = datasets.MNIST(root='../data/', train=True, download=True, transform=transform)
 
-    test_set = datasets.MNIST(root='./data/', train=False, download=True, transform=transform)
+    test_set = datasets.MNIST(root='../data/', train=False, download=True, transform=transform)
 
     return train_set, test_set
 
@@ -48,9 +48,9 @@ def load_cifar10_data() -> tuple[Dataset, Dataset]:
     )
 
     train_set = datasets.CIFAR10(
-        './data/cifar10/', train=True, transform=transform_train, download=True)
+        '../data/cifar10/', train=True, transform=transform_train, download=True)
 
-    test_set = datasets.CIFAR10(root='./data/cifar10/', train=False,
+    test_set = datasets.CIFAR10(root='../data/cifar10/', train=False,
                                             download=True, transform=transform_test)
 
     return train_set, test_set
@@ -71,9 +71,9 @@ def load_cifar100_data() -> tuple[Dataset, Dataset]:
     )
 
     train_set = datasets.CIFAR100(
-        './data/cifar100/', train=True, transform=transform_train, download=True)
+        '../data/cifar100/', train=True, transform=transform_train, download=True)
 
-    test_set = datasets.CIFAR100(root='./data/cifar100/', train=False,
+    test_set = datasets.CIFAR100(root='../data/cifar100/', train=False,
                                             download=True, transform=transform_test)
 
     return train_set, test_set

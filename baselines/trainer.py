@@ -132,7 +132,7 @@ class Trainer:
                 valid_loss_min,
                 valid_loss))
                 valid_loss_min = valid_loss
-                torch.save(self.model.state_dict(), f'best_model_{self.model.__class__.__name__}.pt')
+                torch.save(self.model.state_dict(), f'checkpoints/best_model_{self.model.__class__.__name__}.pt')
 
             if acc_target > 0.0 and valid_acc >= acc_target:
                 print(f'Target accuracy of {valid_acc}% reached. Stopping training.')
@@ -155,7 +155,7 @@ class Trainer:
         print(f'numero di epoche: {epoch+1}')
 
     def evaluate(self, test_loader: DataLoader):
-        self.model.load_state_dict(torch.load(f'best_model_{self.model.__class__.__name__}.pt'))
+        self.model.load_state_dict(torch.load(f'checkpoints/best_model_{self.model.__class__.__name__}.pt'))
         test_acc, _ = self.test_epoch(test_loader)
         print(f'Test Accuracy: {test_acc:.2f}%')
         print(f'{"="*50}')
