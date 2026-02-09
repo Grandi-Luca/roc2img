@@ -1,10 +1,8 @@
 import numpy as np
 
 import torch
+from torch import nn
 from torch.nn import functional as F
-from torch.utils.data import TensorDataset, DataLoader
-
-from sklearn.base import BaseEstimator, TransformerMixin
 
 from collections.abc import Callable
 
@@ -15,17 +13,33 @@ from utils import _set_random_seed, ResNetModel
 from distributions import DistributionType, extract_weights_and_biases, fit_kde_models
 
 
-def _sample_rocket_dilation(input_dim: int, kernel_size: int, num: int) -> np.ndarray:
+def _sample_rocket_dilation(input_dim: int, kernel_size: int, num: int, dilation_type: DilationType) -> np.ndarray:
     """Sample random dilations for ROCKET kernels using vectorized operations."""
-    if kernel_size <= 1:
+    if kernel_size <= 1 or dilation_type == DilationType.DILATED_1:
         return np.ones(num, dtype=np.int32)
     
-    max_dilation = (input_dim - 1) / float(kernel_size - 1)
-    if max_dilation <= 1.0:
-        return np.ones(num, dtype=np.int32)
+    if dilation_type == DilationType.UNIFORM_ROCKET:
+        max_dilation = (input_dim - 1) / float(kernel_size - 1)
+        if max_dilation <= 1.0:
+            return np.ones(num, dtype=np.int32)
+        
+        upper = float(np.log2(max_dilation))
+        return np.int32(2 ** np.random.uniform(0.0, upper, size=num))
     
-    upper = float(np.log2(max_dilation))
-    return np.int32(2 ** np.random.uniform(0.0, upper, size=num))
+    elif dilation_type == DilationType.DILATED_2:
+        return np.full(num, 2, dtype=np.int32)
+    elif dilation_type == DilationType.DILATED_3:
+        return np.full(num, 3, dtype=np.int32)
+    elif dilation_type == DilationType.RANDOM_13:
+        return  np.int32(np.random.choice([1,2,3], size=num))
+    elif dilation_type == DilationType.RANDOM_02:
+        return  np.int32(2 ** np.random.choice([0,1], size=num))
+    elif dilation_type == DilationType.RANDOM_03:
+        return  np.int32(2 ** np.random.choice([0,1,2], size=num))
+    elif dilation_type == DilationType.RANDOM_04:
+        return  np.int32(2 ** np.random.choice([0,1,2,3], size=num))
+    else:
+        raise ValueError(f"Unsupported dilation type: {dilation_type}")
 
 
 def _generate_kernels(
@@ -37,7 +51,7 @@ def _generate_kernels(
     padding_mode: PaddingMode,
     weight_distr_fn: Callable,
     bias_distr_fn: Callable,
-    dilation: DilationType,
+    dilation_type: DilationType,
     candidate_strides: list[int],
     device: Optional[torch.device] = None,
     random_state: Optional[int] = None
@@ -74,10 +88,10 @@ def _generate_kernels(
             continue
 
         if convolution_type == ConvolutionType.SPATIAL:
-            dilations_h[mask] = _sample_rocket_dilation(input_h, size, num_ker)
-            dilations_w[mask] = _sample_rocket_dilation(input_w, size, num_ker)
+            dilations_h[mask] = _sample_rocket_dilation(input_h, size, num_ker, dilation_type)
+            dilations_w[mask] = _sample_rocket_dilation(input_w, size, num_ker, dilation_type)
         else:
-            d = _sample_rocket_dilation(min(input_h, input_w), size, num_ker)
+            d = _sample_rocket_dilation(min(input_h, input_w), size, num_ker, dilation_type)
             dilations_h[mask] = d
             dilations_w[mask] = d
 
@@ -121,9 +135,12 @@ def _generate_kernels(
     return groups
 
 
-class ROCKET(BaseEstimator, TransformerMixin):
+class ROCKET(nn.Module):
     def __init__(
             self,
+            cin: int,
+            input_h: int,
+            input_w: int,
             cout=1000,
             candidate_lengths: list[int] = [3],
             padding_mode: PaddingMode = PaddingMode.RANDOM,
@@ -135,9 +152,13 @@ class ROCKET(BaseEstimator, TransformerMixin):
             features_to_extract: list[FeatureType] = [
                 FeatureType.PPV, FeatureType.MPV, FeatureType.MIPV, FeatureType.LSPV],
             device: Optional[torch.device] = None,
-            batch_size: int = 128,
             random_state=None):
 
+        super().__init__()
+        
+        self.cin = cin
+        self.input_h = input_h
+        self.input_w = input_w
         self.cout = cout
         self.candidate_lengths = candidate_lengths
         self.padding_mode = padding_mode
@@ -145,8 +166,6 @@ class ROCKET(BaseEstimator, TransformerMixin):
         self.dilation = dilation
         self.convolution_type = convolution_type
         self.distr_pair = distr_pair
-
-        self.batch_size = batch_size
 
         self.device = device
 
@@ -172,19 +191,10 @@ class ROCKET(BaseEstimator, TransformerMixin):
             w, b = extract_weights_and_biases(model)
             fit_kde_models(w, b)
 
-        self.conv_params = {}
-
-    def fit(self, X, y=None):
-        """Generate the random convolutional kernels.
-
-        Args:
-            X (torch.Tensor): Input data of shape [B, C, H, W].
-            y (torch.Tensor, optional): Parameter used just for compatibility. Defaults to None.
-        """
-        _, cin, input_h, input_w = X.shape
+        # Generate random convolutional kernels
         self.conv_params = _generate_kernels(
-            cin,
-            (input_h, input_w),
+            self.cin,
+            (self.input_h, self.input_w),
             self.cout,
             self.convolution_type,
             self.candidate_lengths,
@@ -197,24 +207,19 @@ class ROCKET(BaseEstimator, TransformerMixin):
             self.random_state
         )
 
-    def transform(self, X):
-        if not isinstance(X, DataLoader):
-
-            if isinstance(X, np.ndarray):
-                X = torch.from_numpy(X).float()
-            y = torch.zeros(X.shape[0], dtype=torch.int32)  # dummy labels
-            dataset = TensorDataset(X, y)
-            loader = DataLoader(dataset, batch_size=self.batch_size,
-                                shuffle=False, num_workers=2)
-        else:
-            loader = X
-
-        X_list = []
-
-        for X_batch, _ in loader:
-            X_batch_transformed = self._transform(X_batch.to(self.device))
-            X_list.append(X_batch_transformed.cpu())
-        return torch.cat(X_list, dim=0).numpy()
+    def forward(self, X):
+        """Forward pass through the ROCKET transformation.
+        
+        Args:
+            X (torch.Tensor): Input data of shape [B, C, H, W].
+            
+        Returns:
+            torch.Tensor: Transformed features.
+        """
+        if isinstance(X, np.ndarray):
+            X = torch.from_numpy(X).float()
+        
+        return self._transform(X.to(self.device))
 
     def _transform(self, X):
         batch_size, cin, _, _ = X.shape
@@ -377,12 +382,3 @@ class ROCKET(BaseEstimator, TransformerMixin):
             s = e
 
         return features
-
-    def get_params(self, deep=True):
-        params = super().get_params(deep=deep)
-        params['distr_pair'] = (
-            self.distr_pair[0].name,
-            self.distr_pair[1].name,
-        )
-        params['features_to_extract'] = sorted(params['features_to_extract'])
-        return params
