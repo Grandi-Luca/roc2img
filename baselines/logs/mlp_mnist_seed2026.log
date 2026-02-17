@@ -1,8 +1,0 @@
-2026-02-17 10:16 - INFO - [97m
-==========Configuration==========
-  {'model': 'MLP', 'dataset': 'mnist', 'num_classes': 10, 'optimizer': 'SGD', 'scheduler': 'MultiStepLR', 'num_epochs': 300}
-==========Configuration==========[0m
-2026-02-17 10:17 - INFO - epoch: 1 | train loss: 1.1608 | train acc: 59.6375 | valid acc: 87.6667 | train time: 8.8498
-2026-02-17 10:17 - INFO - [97mSaving model with new min validation loss: 0.003389 at epoch: 1[0m
-2026-02-17 10:17 - INFO - epoch: 2 | train loss: 0.2292 | train acc: 91.2271 | valid acc: 92.7333 | train time: 8.1908
-2026-02-17 10:17 - INFO - [97mSaving model with new min validation loss: 0.001762 at epoch: 2[0m

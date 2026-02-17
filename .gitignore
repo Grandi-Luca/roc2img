@@ -6,7 +6,7 @@ wandb/
 __pycache__/
 */__pycache__/
 baselines/checkpoints/*
-baselines/logs/mlgroup/*
+baselines/logs/*
 baselines/log_metrics/*
 *.pt
 */wandb/
