@@ -12,8 +12,6 @@ from torch.utils.data.sampler import SubsetRandomSampler
 
 import numpy as np
 
-from utils import _set_random_seed
-
 import argparse
 import time
 
@@ -79,7 +77,7 @@ def load_cifar100_data() -> tuple[Dataset, Dataset]:
     return train_set, test_set
 
 
-def load_data(dataset: str, batch_size: int) -> tuple[DataLoader, DataLoader, DataLoader]:
+def load_data(dataset: str, batch_size: int=128) -> tuple[DataLoader, DataLoader, DataLoader]:
     if dataset == "mnist":
         train_set, test_set = load_mnist_data()
     elif dataset == "cifar10":
@@ -90,7 +88,6 @@ def load_data(dataset: str, batch_size: int) -> tuple[DataLoader, DataLoader, Da
         raise ValueError(f"Unsupported dataset: {dataset}")
     
     # obtain training indices that will be used for validation
-    _set_random_seed(42)
     num_train = len(train_set)
     indices = list(range(num_train))
     np.random.shuffle(indices)

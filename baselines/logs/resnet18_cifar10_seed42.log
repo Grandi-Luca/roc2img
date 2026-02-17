@@ -1,0 +1,4 @@
+2026-02-17 10:14 - INFO - [97m
+==========Configuration==========
+  {'model': 'ResNet18', 'dataset': 'cifar10', 'num_classes': 10, 'optimizer': 'SGD', 'scheduler': 'MultiStepLR', 'num_epochs': 160}
+==========Configuration==========[0m

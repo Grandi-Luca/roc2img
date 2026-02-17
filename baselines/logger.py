@@ -1,0 +1,99 @@
+import logging
+from typing import Dict
+import wandb
+import os
+import json
+import hashlib
+from typing import Dict, Union
+
+
+def generate_config_hash(config: dict) -> str:
+    """Generates a unique hash for a given configuration dictionary."""
+    config_str = json.dumps(config, sort_keys=True)  # Convert config to JSON string for hashing
+    return hashlib.md5(config_str.encode()).hexdigest()  # Generate MD5 hash
+
+class Logger:
+    def __init__(self, name: str, logs_directory: str = './logs/', results_directory: 
+                    str = './results/', log_metrics_directory: str = './log_metrics'):
+        self.logger = logging.getLogger(name)
+        self.run_path = None
+        self.name = name
+        log_file_path = os.path.join(logs_directory, f"{name}.log")
+
+        if os.path.exists(log_file_path):
+            print(f"Logger with configuration {self.name} already exists. Reusing it.")
+        self.logs_directory = logs_directory
+        self.results_directory = results_directory
+        self.log_metrics = log_metrics_directory
+        self._configure_local_logger(name)
+        
+    def _configure_local_logger(self, name: str):
+        """Configures the local logger with console and file handlers."""
+        self.logger.setLevel(logging.INFO)
+        
+        # Console handler
+        console_handler = logging.StreamHandler()
+        
+        # File handler
+        file_handler = logging.FileHandler(f"{self.logs_directory}{name}.log", mode='w', encoding="utf-8")
+        
+        # Formatter
+        formatter = logging.Formatter(
+            "{asctime} - {levelname} - {message}",
+            style="{",
+            datefmt="%Y-%m-%d %H:%M"
+        )
+        
+        console_handler.setFormatter(formatter)
+        file_handler.setFormatter(formatter)
+        
+        # Add handlers to the logger
+        self.logger.addHandler(console_handler)
+        self.logger.addHandler(file_handler)
+
+    def log(self, message, header=None, color="white"):
+        COLORS = {
+            "white": "\033[97m",    # Info
+            "green": "\033[92m",   # Success
+            "yellow": "\033[93m",  # Warning
+            "red": "\033[91m"      # Error
+        }
+        RESET = "\033[0m"
+        color_code = COLORS.get(color, COLORS["white"])
+
+        if header:
+            line = "=" * (len(message) + 4) + header + "=" * (len(message) + 4)
+            formatted_message = f"\n{line}\n  {message}\n{line}"
+        else:
+            formatted_message = message
+
+        self.logger.info(f"{color_code}{formatted_message}{RESET}")
+        
+
+    def __call__(self, stats: Dict[str, float]):
+        """Logs the statistics both to the console and file."""
+        message = " | ".join(f"{key}: {round(value,4)}" for key, value in stats.items() if '/' not in key and value is not None)
+        self.logger.info(message)
+    
+    def finish(self):
+        self.logger.info('finish')
+
+
+class WandbLogger(Logger):
+    def __init__(self, name: str, logs_directory: str, results_directory: str, log_metrics_directory: str,  **kwargs):
+        super().__init__(name, logs_directory, results_directory, log_metrics_directory)
+        # Initialize the Wandb run
+        wandb.init(name=name, **kwargs)
+        
+    def __call__(self, stats: Dict[str, float]):
+        """Logs statistics to both the local logger and Wandb."""
+        super().__call__(stats)  # Log to local logger
+        if 'step' not in stats.keys():
+            wandb.log(stats)
+        else:    
+            wandb.log(stats, step = stats['step'])         # Log to Wandb
+
+    def finish(self):
+        """Ends the Wandb run."""
+        super().finish()
+        wandb.finish()

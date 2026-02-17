@@ -10,8 +10,6 @@ from torch.utils.data.sampler import SubsetRandomSampler
 
 import numpy as np
 
-from utils import _set_random_seed
-
 import argparse
 import time
 
