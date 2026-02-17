@@ -15,14 +15,11 @@ from distributions import DistributionType, extract_weights_and_biases, fit_kde_
 
 def _sample_rocket_dilation(input_dim: int, kernel_size: int, num: int, dilation_type: DilationType) -> np.ndarray:
     """Sample random dilations for ROCKET kernels using vectorized operations."""
-    if kernel_size <= 1 or dilation_type == DilationType.DILATED_1:
+    if kernel_size <= 1 or input_dim <= kernel_size or dilation_type == DilationType.DILATED_1:
         return np.ones(num, dtype=np.int32)
     
-    if dilation_type == DilationType.UNIFORM_ROCKET:
+    if dilation_type == DilationType.UNIFORM_ROCKET:        
         max_dilation = (input_dim - 1) / float(kernel_size - 1)
-        if max_dilation <= 1.0:
-            return np.ones(num, dtype=np.int32)
-        
         upper = float(np.log2(max_dilation))
         return np.int32(2 ** np.random.uniform(0.0, upper, size=num))
     
@@ -30,22 +27,14 @@ def _sample_rocket_dilation(input_dim: int, kernel_size: int, num: int, dilation
         return np.full(num, 2, dtype=np.int32)
     elif dilation_type == DilationType.DILATED_3:
         return np.full(num, 3, dtype=np.int32)
-    elif dilation_type == DilationType.RANDOM_13:
-        return  np.int32(np.random.choice([1,2,3], size=num))
-    elif dilation_type == DilationType.RANDOM_02:
-        return  np.int32(2 ** np.random.choice([0,1], size=num))
-    elif dilation_type == DilationType.RANDOM_03:
-        return  np.int32(2 ** np.random.choice([0,1,2], size=num))
-    elif dilation_type == DilationType.RANDOM_04:
-        return  np.int32(2 ** np.random.choice([0,1,2,3], size=num))
     else:
         raise ValueError(f"Unsupported dilation type: {dilation_type}")
 
 
 def _generate_kernels(
+    cout: int,
     cin: int,
     input_hw: tuple[int, int] | int,
-    cout: int,
     convolution_type: ConvolutionType,
     candidate_sizes: list,
     padding_mode: PaddingMode,
@@ -107,18 +96,18 @@ def _generate_kernels(
     groups = {}
     for key, count in zip(unique_params, counts):
         kernel_size = key[0]
-        
+
         # Generate biases
         if convolution_type == ConvolutionType.DEPTHWISE:
             bias = bias_distr_fn(count * cin, cin, kernel_size, kernel_size, groups=cin).to(device)
         else:
             bias = bias_distr_fn(count, cin, kernel_size, kernel_size).to(device)
-
+  
         # Generate weights based on convolution type
         if convolution_type == ConvolutionType.SPATIAL:
             weights = (
                 weight_distr_fn(count, cin, 1, kernel_size).to(device),
-                weight_distr_fn(count, cin, kernel_size, 1).to(device)
+                weight_distr_fn(count, count, kernel_size, 1).to(device)
             )
         elif convolution_type == ConvolutionType.DEPTHWISE_SEP:
             weights = (
@@ -138,10 +127,10 @@ def _generate_kernels(
 class ROCKET(nn.Module):
     def __init__(
             self,
+            cout: int,
             cin: int,
             input_h: int,
             input_w: int,
-            cout=1000,
             candidate_lengths: list[int] = [3],
             padding_mode: PaddingMode = PaddingMode.RANDOM,
             distr_pair: tuple[DistributionType, DistributionType] = (
@@ -155,10 +144,7 @@ class ROCKET(nn.Module):
             random_state=None):
 
         super().__init__()
-        
-        self.cin = cin
-        self.input_h = input_h
-        self.input_w = input_w
+
         self.cout = cout
         self.candidate_lengths = candidate_lengths
         self.padding_mode = padding_mode
@@ -168,6 +154,7 @@ class ROCKET(nn.Module):
         self.distr_pair = distr_pair
 
         self.device = device
+        self.training = False
 
         if len(features_to_extract) == 0:
             raise ValueError("At least one feature must be specified.")
@@ -193,9 +180,9 @@ class ROCKET(nn.Module):
 
         # Generate random convolutional kernels
         self.conv_params = _generate_kernels(
-            self.cin,
-            (self.input_h, self.input_w),
             self.cout,
+            cin,
+            (input_h, input_w),
             self.convolution_type,
             self.candidate_lengths,
             self.padding_mode,
@@ -217,9 +204,9 @@ class ROCKET(nn.Module):
             torch.Tensor: Transformed features.
         """
         if isinstance(X, np.ndarray):
-            X = torch.from_numpy(X).float()
+            X = torch.from_numpy(X).float().to(self.device)
         
-        return self._transform(X.to(self.device))
+        return self._transform(X)
 
     def _transform(self, X):
         batch_size, cin, _, _ = X.shape
@@ -264,7 +251,7 @@ class ROCKET(nn.Module):
                 padding=padding_1,
                 dilation=dilation_1,
                 groups=group
-            )
+            ).relu()
 
             # Second convolution if convolution_type requires it
             if self.convolution_type in [ConvolutionType.SPATIAL, ConvolutionType.DEPTHWISE_SEP]:
@@ -276,7 +263,7 @@ class ROCKET(nn.Module):
                     padding=padding_2,
                     dilation=dilation_2,
                     groups=1
-                )
+                ).relu()
 
             # Reconstructing data if depthwise from [B, K*cin, H, W] to [B, K, cin*H*W]
             if self.convolution_type == ConvolutionType.DEPTHWISE:
@@ -380,5 +367,20 @@ class ROCKET(nn.Module):
             e = s + extracted_features.shape[1]
             features[:, s:e] = extracted_features
             s = e
+            del data, features_list, extracted_features
 
         return features
+
+    def get_params(self) -> dict[str, any]:
+        return {
+            "cout": self.cout,
+            "candidate_lengths": self.candidate_lengths,
+            "padding_mode": self.padding_mode,
+            "dilation": self.dilation,
+            "candidate_strides": self.candidate_strides,
+            "convolution_type": self.convolution_type,
+            "features_to_extract": sorted(self.features_to_extract),
+            "distr_pair": (self.distr_pair[0].name, self.distr_pair[1].name),
+            "random_state": self.random_state,
+            'device': str(self.device),
+        }
