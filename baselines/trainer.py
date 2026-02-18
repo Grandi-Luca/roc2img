@@ -152,4 +152,4 @@ class Trainer:
     def evaluate(self, test_loader: DataLoader):
         self.model.load_state_dict(torch.load(f'checkpoints/best_model_{self.model.__class__.__name__}.pt'))
         test_acc, _ = self.test_epoch(test_loader)
-        self.logger.log(f'Test Accuracy: {test_acc:.2f}%')
+        self.logger({'test acc': test_acc})

@@ -53,7 +53,12 @@ if __name__ == '__main__':
                          project="roc2img",
                          logs_directory="./logs/", 
                          results_directory="./checkpoints/", 
-                         log_metrics_directory="./log_metrics/")
+                         log_metrics_directory="./log_metrics/",
+                         tags=[ args.model,
+                                args.dataset,
+                                f"seed{args.seed}",
+                                "baseline"]
+                         )
     
     trainer = Trainer(model, torch.device('cuda' if torch.cuda.is_available() else 'cpu'), logger=logger)
     
