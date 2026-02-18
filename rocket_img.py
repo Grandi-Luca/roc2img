@@ -34,7 +34,7 @@ def _sample_rocket_dilation(input_dim: int, kernel_size: int, num: int, dilation
 def _generate_kernels(
     cout: int,
     cin: int,
-    input_hw: tuple[int, int] | int,
+    input_dhw: tuple[int, int, int] | int,
     convolution_type: ConvolutionType,
     candidate_sizes: list,
     padding_mode: PaddingMode,
@@ -49,10 +49,10 @@ def _generate_kernels(
     if random_state is not None:
         _set_random_seed(random_state)
 
-    if isinstance(input_hw, int):
-        input_h, input_w = input_hw, input_hw
+    if isinstance(input_dhw, int):
+        input_depth, input_h, input_w = input_dhw, input_dhw, input_dhw
     else:
-        input_h, input_w = input_hw
+        input_depth, input_h, input_w = input_dhw
 
     # Generate padding mask
     candidate_pad = {
@@ -68,6 +68,7 @@ def _generate_kernels(
     # Initialize arrays for dilations
     dilations_h = np.ones(cout, dtype=np.int32)
     dilations_w = np.ones(cout, dtype=np.int32)
+    dilations_d = np.ones(cout, dtype=np.int32)
     
     # Compute dilations for each unique size
     for size in candidate_sizes:
@@ -77,47 +78,51 @@ def _generate_kernels(
             continue
 
         if convolution_type == ConvolutionType.SPATIAL:
+            dilations_d[mask] = _sample_rocket_dilation(input_depth, size, num_ker, dilation_type)
             dilations_h[mask] = _sample_rocket_dilation(input_h, size, num_ker, dilation_type)
             dilations_w[mask] = _sample_rocket_dilation(input_w, size, num_ker, dilation_type)
         else:
-            d = _sample_rocket_dilation(min(input_h, input_w), size, num_ker, dilation_type)
+            input_dim = min(input_depth, input_h, input_w) if input_depth > 1 else min(input_h, input_w)
+            d = _sample_rocket_dilation(input_dim, size, num_ker, dilation_type)
             dilations_h[mask] = d
             dilations_w[mask] = d
+            dilations_d[mask] = d if input_depth > 1 else 1
 
     # Compute paddings vectorized
+    paddings_d = np.where(candidate_pad, ((kernel_sizes - 1) * dilations_d) // 2, 0) if input_depth > 1 else np.zeros(cout, dtype=np.int32)
     paddings_h = np.where(candidate_pad, ((kernel_sizes - 1) * dilations_h) // 2, 0)
     paddings_w = np.where(candidate_pad, ((kernel_sizes - 1) * dilations_w) // 2, 0)
 
     # Group kernels by unique parameter combinations
-    kernel_params = np.column_stack([kernel_sizes, dilations_h, dilations_w, paddings_h, paddings_w, strides])
+    kernel_params = np.column_stack([kernel_sizes, dilations_d, dilations_h, dilations_w, paddings_d, paddings_h, paddings_w, strides])
     unique_params, counts = np.unique(kernel_params, axis=0, return_counts=True)
 
     # Generate weights and biases for each unique parameter group
     groups = {}
     for key, count in zip(unique_params, counts):
         kernel_size = key[0]
-
+        depth = kernel_size if input_depth > 1 else 1
         # Generate biases
         if convolution_type == ConvolutionType.DEPTHWISE:
-            bias = bias_distr_fn(count * cin, cin, kernel_size, kernel_size, groups=cin).to(device)
+            bias = bias_distr_fn(count * cin, cin, depth, kernel_size, kernel_size, groups=cin).to(device)
         else:
-            bias = bias_distr_fn(count, cin, kernel_size, kernel_size).to(device)
+            bias = bias_distr_fn(count, cin, depth, kernel_size, kernel_size).to(device)
   
         # Generate weights based on convolution type
         if convolution_type == ConvolutionType.SPATIAL:
             weights = (
-                weight_distr_fn(count, cin, 1, kernel_size).to(device),
-                weight_distr_fn(count, count, kernel_size, 1).to(device)
+                weight_distr_fn(count, cin, depth, 1, kernel_size).to(device),
+                weight_distr_fn(count, count, depth, kernel_size, 1).to(device)
             )
         elif convolution_type == ConvolutionType.DEPTHWISE_SEP:
             weights = (
-                weight_distr_fn(cin, cin, kernel_size, kernel_size, groups=cin).to(device),
-                weight_distr_fn(count, cin, 1, 1).to(device)
+                weight_distr_fn(cin, cin, depth, kernel_size, kernel_size, groups=cin).to(device),
+                weight_distr_fn(count, cin, 1, 1, 1).to(device)
             )
         elif convolution_type == ConvolutionType.DEPTHWISE:
-            weights = (weight_distr_fn(count * cin, cin, kernel_size, kernel_size, groups=cin).to(device),)
+            weights = (weight_distr_fn(count * cin, cin, depth, kernel_size, kernel_size, groups=cin).to(device),)
         else:  # STANDARD
-            weights = (weight_distr_fn(count, cin, kernel_size, kernel_size).to(device),)
+            weights = (weight_distr_fn(count, cin, depth, kernel_size, kernel_size).to(device),)
 
         groups[tuple(key.tolist())] = {"weights": weights, "bias": bias}
 
@@ -129,8 +134,7 @@ class ROCKET(nn.Module):
             self,
             cout: int,
             cin: int,
-            input_h: int,
-            input_w: int,
+            input_dhw: tuple[int, int, int] | int,
             candidate_lengths: list[int] = [3],
             padding_mode: PaddingMode = PaddingMode.RANDOM,
             distr_pair: tuple[DistributionType, DistributionType] = (
@@ -182,7 +186,7 @@ class ROCKET(nn.Module):
         self.conv_params = _generate_kernels(
             self.cout,
             cin,
-            (input_h, input_w),
+            input_dhw,
             self.convolution_type,
             self.candidate_lengths,
             self.padding_mode,
@@ -209,7 +213,7 @@ class ROCKET(nn.Module):
         return self._transform(X)
 
     def _transform(self, X):
-        batch_size, cin, _, _ = X.shape
+        batch_size, cin, _, _, _ = X.shape
 
         output_size = len(self.features_to_extract) * self.cout
         if FeatureType.MAX2D in self.features_to_extract:
@@ -222,27 +226,27 @@ class ROCKET(nn.Module):
         s = 0
         for key, var in self.conv_params.items():
 
-            _, dilation_h, dilation_w, padding_h, padding_w, stride = key
+            _, dilation_d, dilation_h, dilation_w, padding_d, padding_h, padding_w, stride = key
 
             if self.convolution_type == ConvolutionType.SPATIAL:
-                padding_1, padding_2 = (0, padding_w), (padding_h, 0)
-                dilation_1, dilation_2 = (1, dilation_w), (dilation_h, 1)
+                padding_1, padding_2 = (padding_d, 0, padding_w), (padding_d, padding_h, 0)
+                dilation_1, dilation_2 = (dilation_d, 1, dilation_w), (dilation_d, dilation_h, 1)
                 group = 1
             elif self.convolution_type == ConvolutionType.DEPTHWISE_SEP:
-                padding_1, padding_2 = (padding_h, padding_w), 0
-                dilation_1, dilation_2 = (dilation_h, dilation_w), 1
+                padding_1, padding_2 = (dilation_d, padding_h, padding_w), 0
+                dilation_1, dilation_2 = (dilation_d, dilation_h, dilation_w), 1
                 group = cin
             elif self.convolution_type == ConvolutionType.DEPTHWISE:
-                padding_1 = (padding_h, padding_w)
-                dilation_1 = (dilation_h, dilation_w)
+                padding_1 = (padding_d, padding_h, padding_w)
+                dilation_1 = (dilation_d, dilation_h, dilation_w)
                 group = cin
             else:
-                padding_1 = (padding_h, padding_w)
-                dilation_1 = (dilation_h, dilation_w)
+                padding_1 = (padding_d, padding_h, padding_w)
+                dilation_1 = (dilation_d, dilation_h, dilation_w)
                 group = 1
 
             # First convolution
-            data = F.conv2d(
+            data = F.conv3d(
                 input=X,
                 weight=var['weights'][0],
                 bias=var['bias'] if self.convolution_type in [
@@ -255,7 +259,7 @@ class ROCKET(nn.Module):
 
             # Second convolution if convolution_type requires it
             if self.convolution_type in [ConvolutionType.SPATIAL, ConvolutionType.DEPTHWISE_SEP]:
-                data = F.conv2d(
+                data = F.conv3d(
                     input=data,
                     weight=var['weights'][1],
                     bias=var['bias'],
@@ -277,11 +281,11 @@ class ROCKET(nn.Module):
             features_list = []
             # Computing Max pooling
             if FeatureType.MAX2D in self.features_to_extract:
-                max2d = F.adaptive_max_pool2d(data, output_size=2).flatten(1)
+                max2d = F.adaptive_max_pool3d(data, output_size=(1,2,2)).flatten(1)
                 features_list.append(max2d)
 
             if FeatureType.AVG2D in self.features_to_extract:
-                avg2d = F.adaptive_avg_pool2d(data, output_size=2).flatten(1)
+                avg2d = F.adaptive_avg_pool3d(data, output_size=(1,2,2)).flatten(1)
                 features_list.append(avg2d)
 
             # [B, num_kernel_group, H*W]

@@ -51,71 +51,71 @@ def fit_kde_models(weights, bias) -> None:
 
 
 #  ##### GAUSS DISTRIBUTIONS FOR RESNET WIGHT (FIRST) #####
-def _approx_resnet_50_weight_first_gauss_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _approx_resnet_50_weight_first_gauss_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.normal(
-        MU_WEIGHTS, STD_WEIGHTS_RESNET_50, (cout, cin//groups, kh, kw)).astype(np.float32)
-    samples = samples - samples.mean(axis=(2, 3), keepdims=True)
+        MU_WEIGHTS, STD_WEIGHTS_RESNET_50, (cout, cin//groups, kd, kh, kw)).astype(np.float32)
+    samples = samples - samples.mean(axis=(2, 3, 4), keepdims=True)
     return torch.from_numpy(samples)
 
 
-def _approx_resnet_18_weight_first_gauss_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _approx_resnet_18_weight_first_gauss_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.normal(
-        MU_WEIGHTS, STD_WEIGHTS_RESNET_18, (cout, cin//groups, kh, kw)).astype(np.float32)
-    samples = samples - samples.mean(axis=(2, 3), keepdims=True)
+        MU_WEIGHTS, STD_WEIGHTS_RESNET_18, (cout, cin//groups, kd, kh, kw)).astype(np.float32)
+    samples = samples - samples.mean(axis=(2, 3, 4), keepdims=True)
     return torch.from_numpy(samples)
 
 
 #  ##### LAPLACE DISTRIBUTIONS FOR RESNET WIGHT (FIRST) #####
-def _approx_resnet_50_weight_first_laplace_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _approx_resnet_50_weight_first_laplace_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.laplace(
-        MU_WEIGHTS, STD_WEIGHTS_RESNET_50 / np.sqrt(2), (cout, cin//groups, kh, kw)).astype(np.float32)
-    samples = samples - samples.mean(axis=(2, 3), keepdims=True)
+        MU_WEIGHTS, STD_WEIGHTS_RESNET_50 / np.sqrt(2), (cout, cin//groups, kd, kh, kw)).astype(np.float32)
+    samples = samples - samples.mean(axis=(2, 3, 4), keepdims=True)
     return torch.from_numpy(samples)
 
 
-def _approx_resnet_18_weight_first_laplace_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _approx_resnet_18_weight_first_laplace_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.laplace(
-        MU_WEIGHTS, STD_WEIGHTS_RESNET_18 / np.sqrt(2), (cout, cin//groups, kh, kw)).astype(np.float32)
-    samples = samples - samples.mean(axis=(2, 3), keepdims=True)
+        MU_WEIGHTS, STD_WEIGHTS_RESNET_18 / np.sqrt(2), (cout, cin//groups, kd, kh, kw)).astype(np.float32)
+    samples = samples - samples.mean(axis=(2, 3, 4), keepdims=True)
     return torch.from_numpy(samples)
 
 
-def _gaussian_01_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _gaussian_01_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.normal(
-        0, 1, (cout, cin//groups, kh, kw)).astype(np.float32)
-    samples = samples - samples.mean(axis=(2, 3), keepdims=True)
+        0, 1, (cout, cin//groups, kd, kh, kw)).astype(np.float32)
+    samples = samples - samples.mean(axis=(2, 3, 4), keepdims=True)
     return torch.from_numpy(samples)
 
 
-def _conv2d_weight_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _conv2d_weight_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     assert groups > 0, "Groups must be a positive integer."
     assert cin % groups == 0, "cin must be divisible by groups."
-    k = groups / (cin * kh * kw)
+    k = groups / (cin * kd * kh * kw)
     samples = np.random.uniform(-np.sqrt(k), np.sqrt(k),
-                                size=(cout, cin//groups, kh, kw)).astype(np.float32)
+                                size=(cout, cin//groups, kd, kh, kw)).astype(np.float32)
     return torch.from_numpy(samples)
 
 
-def _real_resnet_weight_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _real_resnet_weight_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     global KDE_MODELS
     assert KDE_MODELS['weight'] is not None, "KDE model for weights is not fitted yet. Extract the weights and then fit KDE model."
-    samples = KDE_MODELS['weight'].sample(cout * (cin // groups) * kh * kw)
-    samples = samples.reshape(cout, cin // groups, kh, kw).astype(np.float32)
+    samples = KDE_MODELS['weight'].sample(cout * (cin // groups) * kd * kh * kw)
+    samples = samples.reshape(cout, cin // groups, kd, kh, kw).astype(np.float32)
     samples = add_random_noise(torch.from_numpy(samples), noise_level=0)
-    samples = samples - samples.mean(axis=(2, 3), keepdims=True)
+    samples = samples - samples.mean(axis=(2, 3, 4), keepdims=True)
     return samples
 
 
-def _conv2d_bias_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _conv2d_bias_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     assert groups > 0, "Groups must be a positive integer."
     assert cin % groups == 0, "cin must be divisible by groups."
-    k = groups / (cin * kh * kw)
+    k = groups / (cin * kd * kh * kw)
     samples = np.random.uniform(-np.sqrt(k), np.sqrt(k),
                                 size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 
-def _uniform_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _uniform_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.uniform(
         -1, 1, size=cout).astype(np.float32)
     return torch.from_numpy(samples)
@@ -127,55 +127,55 @@ def add_random_noise(tensor: torch.Tensor, noise_level: float) -> torch.Tensor:
     return tensor + noise
 
 #  ##### GAUSS DISTRIBUTIONS FOR RESNET BIASES (GLOBAL) #####
-def _approx_resnet18_bias_global_gauss_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _approx_resnet18_bias_global_gauss_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.normal(
         MU_BIAS_RESNET_18, STD_BIAS_RESNET_18, size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 
-def _approx_resnet50_bias_global_gauss_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _approx_resnet50_bias_global_gauss_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.normal(
         MU_BIAS_RESNET_50, STD_BIAS_RESNET_50, size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 
-def _approx_resnet101_bias_global_gauss_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _approx_resnet101_bias_global_gauss_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.normal(
         MU_BIAS_RESNET_101, STD_BIAS_RESNET_101, size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 
-def _approx_resnet152_bias_global_gauss_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _approx_resnet152_bias_global_gauss_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.normal(
         MU_BIAS_RESNET_152, STD_BIAS_RESNET_152, size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 # ##### LAPLACE DISTRIBUTIONS FOR RESNET BIASES (GLOBAL) #####
-def _approx_resnet18_bias_global_laplace_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _approx_resnet18_bias_global_laplace_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.laplace(
         MU_BIAS_RESNET_18, STD_BIAS_RESNET_18/np.sqrt(2), size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 
-def _approx_resnet50_bias_global_laplace_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _approx_resnet50_bias_global_laplace_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.laplace(
         MU_BIAS_RESNET_50, STD_BIAS_RESNET_50/np.sqrt(2), size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 
-def _approx_resnet101_bias_global_laplace_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _approx_resnet101_bias_global_laplace_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.laplace(
         MU_BIAS_RESNET_101, STD_BIAS_RESNET_101/np.sqrt(2), size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 
-def _approx_resnet152_bias_global_laplace_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _approx_resnet152_bias_global_laplace_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     samples = np.random.laplace(
         MU_BIAS_RESNET_152, STD_BIAS_RESNET_152/np.sqrt(2), size=cout).astype(np.float32)
     return torch.from_numpy(samples)
 
 
-def _real_resnet_bias_distr(cout: int, cin: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
+def _real_resnet_bias_distr(cout: int, cin: int, kd: int, kh: int, kw: int, groups: int = 1) -> torch.Tensor:
     global KDE_MODELS
     assert KDE_MODELS['bias'] is not None, "KDE model for biases is not fitted yet."
     samples = KDE_MODELS['bias'].sample(cout)
