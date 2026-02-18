@@ -5,8 +5,13 @@
 wandb/
 __pycache__/
 */__pycache__/
+*.pt
+*/wandb/
+# Ignore everything inside
 baselines/checkpoints/*
 baselines/logs/*
 baselines/log_metrics/*
-*.pt
-*/wandb/
+#Keep the directories themselves
+!baselines/checkpoints/.gitkeep
+!baselines/logs/.gitkeep
+!baselines/log_metrics/.gitkeep

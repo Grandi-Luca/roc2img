@@ -29,9 +29,9 @@ def set_random_seed(seed):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Train and evaluate models on CIFAR-10')
-    parser.add_argument('--model', type=str, choices=['resnet18', 'mlp', 'vgg16'], default='resnet18',
+    parser.add_argument('--model', type=str, default='resnet18',
                         help='Model architecture to use (default: resnet18)')
-    parser.add_argument("--dataset", type=str, choices=["mnist", "cifar10", "cifar100"], default="cifar10",
+    parser.add_argument("--dataset", type=str, default="cifar10",
                         help="Dataset to use (default: cifar10)")
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility (default: 42)')
     args = parser.parse_args()
