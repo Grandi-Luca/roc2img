@@ -34,6 +34,8 @@ class Logger:
         # Console handler
         console_handler = logging.StreamHandler()
         
+        os.makedirs(self.logs_directory, exist_ok=True)
+        
         # File handler
         file_handler = logging.FileHandler(f"{self.logs_directory}{name}.log", mode='w', encoding="utf-8")
         
