@@ -76,6 +76,53 @@ def load_cifar100_data() -> tuple[Dataset, Dataset]:
 
     return train_set, test_set
 
+def load_adni_data(
+        rank_worldsize:str,
+        adni_num:int,
+        data_dir:str,
+        img_dir:str,
+        csv_path:str,
+        csv_filename:str,
+        data_seed:int,
+        batch_size:int=4
+    ):
+     # Load dataset
+    descriptor = MultiINPUTShardDescriptor(
+        rank_worldsize= rank_worldsize,
+        adni_num= adni_num,
+        data_dir= data_dir,
+        img_dir= img_dir,
+        csv_path= csv_path,
+        csv_filename= csv_filename,
+        data_seed= data_seed,
+    )
+
+    # train e test contengono i path per le immagini da usare come input e le labels associate
+    train, test = descriptor.data_by_type['train'], descriptor.data_by_type['val']
+    
+    base_dir = descriptor.data_dir 
+    duplicate_prefix = descriptor.data_dir.split('/')[-1]  # prefisso da rimuovere se presente nei path
+
+    train_paths = [
+        os.path.join(base_dir, path.split(f'{duplicate_prefix}/', 1)[-1]) if path.startswith(f'{duplicate_prefix}/') else os.path.join(base_dir, path)
+        for path in train['IMG_PATH_NORM_min-max'].tolist()
+    ]
+    test_paths = [
+        os.path.join(base_dir, path.split(f'{duplicate_prefix}/', 1)[-1]) if path.startswith(f'{duplicate_prefix}/') else os.path.join(base_dir, path)
+        for path in test['IMG_PATH_NORM_min-max'].tolist()
+    ]
+    
+    # Carica tutte le immagini in un unico tensore
+    X_train = load_nifti_to_tensor(train_paths)
+    y_train = np.array(train['labels'].tolist())
+    
+    X_test = load_nifti_to_tensor(test_paths)
+    y_test = np.array(test['labels'].tolist())
+
+    train_loader = create_loader(X_train, y_train, batch_size=batch_size)
+    test_loader = create_loader(X_test, y_test, batch_size=batch_size)
+
+    return train_loader, test_loader
 
 def load_data(dataset: str, batch_size: int=128) -> tuple[DataLoader, DataLoader, DataLoader]:
     if dataset == "mnist":
@@ -84,6 +131,17 @@ def load_data(dataset: str, batch_size: int=128) -> tuple[DataLoader, DataLoader
         train_set, test_set = load_cifar10_data()
     elif dataset == "cifar100":
         train_set, test_set = load_cifar100_data()
+    elif dataset == "adni":
+        train_set, test_set = load_adni_data(
+            rank_worldsize= '1, 1',
+            adni_num = 1,
+            data_dir = '/mnt/shared_nfs/brunofolder/MERGE/WALTER/IMGS/a1',
+            img_dir = 'ADNI1_ALL_T1',
+            csv_path = '/mnt/shared_nfs/brunofolder/MERGE/WALTER/IMGS/ADNI_csv',
+            csv_filename = 'ADNI_ready.csv',
+            data_seed = 13,
+            batch_size=batch_size
+        )
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
     

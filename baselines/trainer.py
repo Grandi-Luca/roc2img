@@ -18,17 +18,20 @@ import time
 
 class Trainer:
 
-    def __init__(self, model: nn.Module, device: torch.device, logger: WandbLogger = None):
+    def __init__(self, model: nn.Module, dataset_name: str, device: torch.device, logger: WandbLogger = None):
         self.model = model
         self.logger = logger
         self.device = device
+        self.dataset_name = dataset_name
         
         self.model = self.model.to(self.device)
-        self.optimizer, self.scheduler, self.num_epochs = self.__make_optimizer_scheduler()
-        self.criterion = nn.CrossEntropyLoss()
+        self.dataset_
+        self.optimizer, self.scheduler, self.num_epochs, self.criterion = self.__make_optimizer_scheduler()
         
 
     def __make_optimizer_scheduler(self):
+        
+        criterion = nn.CrossEntropyLoss()
         
         if self.model.name.lower() == 'mlp':
             optimizer = optim.SGD(self.model.parameters(), lr=0.05)
@@ -40,13 +43,23 @@ class Trainer:
             num_epochs = 300
             
         elif 'resnet' in self.model.name.lower():
-            optimizer = optim.SGD(self.model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.0005)
-            scheduler = torch.optim.lr_scheduler.MultiStepLR(
-                optimizer,
-                milestones=[60,120],
-                gamma=0.2
-            )
-            num_epochs = 160
+            
+            if self.dataset_name.lower() == 'adni':
+                optimizer = torch.optim.AdamW(self.model.parameters(), lr=1e-4, weight_decay=1e-4)
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                    optimizer,
+                    T_max=120
+                )
+                num_epochs = 120
+                criterion = nn.BCEWithLogitsLoss()
+            else:
+                optimizer = optim.SGD(self.model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.0005)
+                scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                    optimizer,
+                    milestones=[60,120],
+                    gamma=0.2
+                )
+                num_epochs = 160
         elif 'vgg' in self.model.name.lower():
             optimizer = optim.SGD(self.model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.0001)
             scheduler = torch.optim.lr_scheduler.MultiStepLR(
@@ -58,7 +71,7 @@ class Trainer:
         else:
             raise ValueError(f"Unsupported model: {self.model}")
                 
-        return optimizer, scheduler, num_epochs
+        return optimizer, scheduler, num_epochs, criterion
         
 
     def train_epoch(self, train_loader: DataLoader):

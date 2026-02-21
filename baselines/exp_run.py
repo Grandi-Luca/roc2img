@@ -9,9 +9,35 @@ import argparse
 import time
 
 from datasets import load_data
-from models import get_model
 from trainer import Trainer
 from logger import Logger, WandbLogger
+
+
+from mlp import MLP
+from resnet import ResNet, ResNet3D
+from vgg import VGG, VGG3D
+
+
+def get_model(model_name: str, dataset_name: str, input_size: tuple[int, ...], num_classes: int) -> nn.Module:
+    if 'resnet' in model_name.lower():
+        if dataset_name.lower() == 'adni':
+            model = ResNet3D(name=model_name, n_input_channels=1, widen_factor=1.0, n_classes=1)
+        else:
+            model = ResNet(num_classes=num_classes, in_channels=input_size[0])
+            
+    elif model_name == 'mlp':
+        input_size = input_size[0] * input_size[1] * input_size[2]
+        model = MLP(input_size=input_size,num_classes=num_classes)
+        
+    elif 'vgg' in model_name.lower():
+        if dataset_name.lower() == 'adni':
+            model = VGG3D(name=model_name, in_channels=input_size[0], num_classes=num_classes)
+        else:
+            model = VGG(num_classes=num_classes, in_channels=input_size[0], vgg_type=model_name.lower(), batch_norm=True)
+    
+    else:
+        raise ValueError(f"Unsupported model: {model_name}")
+    return model
 
 
 def set_random_seed(seed):
@@ -44,7 +70,7 @@ if __name__ == '__main__':
     num_classes = len(train_loader.dataset.classes)
     input_size = train_loader.dataset[0][0].shape
 
-    model = get_model(args.model, input_size, num_classes)
+    model = get_model(args.model, args.dataset, input_size, num_classes)
     
     run_name = f"{args.model}_{args.dataset}_seed{args.seed}"
         
@@ -60,7 +86,10 @@ if __name__ == '__main__':
                                 "baseline"]
                          )
     
-    trainer = Trainer(model, torch.device('cuda' if torch.cuda.is_available() else 'cpu'), logger=logger)
+    trainer = Trainer(model, 
+                      dataset_name=args.dataset,
+                      device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'), 
+                      logger=logger)
     
     config = {
             'model': trainer.model.__class__.__name__,
