@@ -8,7 +8,7 @@ import torch.nn.functional as F
 #####################################################
 
 class BasicBlock(nn.Module):
-    
+    expansion = 1
     def __init__(self, in_planes, planes, stride=1):
         super(BasicBlock, self).__init__()
         self.expansion = 1
@@ -17,11 +17,12 @@ class BasicBlock(nn.Module):
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(planes)
         self.shortcut = nn.Sequential()
+        
         if stride != 1 or in_planes != self.expansion*planes:
-        self.shortcut = nn.Sequential(
-            nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
-            nn.BatchNorm2d(self.expansion*planes)
-        )
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion*planes)
+            )
   
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
@@ -32,6 +33,7 @@ class BasicBlock(nn.Module):
 
 
 class BottleNeck(nn.Module):
+    expansion = 4
     def __init__(self, in_planes, planes, stride=1):
         super(BottleNeck, self).__init__()
         self.expansion = 4
@@ -43,11 +45,12 @@ class BottleNeck(nn.Module):
         self.bn3 = nn.BatchNorm2d(self.expansion*planes)
 
         self.shortcut = nn.Sequential()
+        
         if stride != 1 or in_planes != self.expansion*planes :
-        self.shortcut = nn.Sequential(
-            nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
-            nn.BatchNorm2d(self.expansion*planes)
-        )
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion*planes)
+            )
 
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
@@ -90,9 +93,11 @@ class ResNet(nn.Module):
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
         layers = []
+        
         for stride in strides:
-        layers.append(block(self.in_planes, planes, stride))
-        self.in_planes = planes * block.expansion      
+            layers.append(block(self.in_planes, planes, stride))
+            self.in_planes = planes * block.expansion      
+        
         return nn.Sequential(*layers)
 
     def forward(self, x):
@@ -115,7 +120,7 @@ class ResNet(nn.Module):
 #####################################################
 
 class BasicBlock3D(nn.Module):
-
+    expansion = 1
     def __init__(self, in_planes, planes, stride=1, downsample=None):
         super().__init__()
         self.downsample = downsample
@@ -157,7 +162,7 @@ class BasicBlock3D(nn.Module):
         return out
 
 class Bottleneck3D(nn.Module):
-
+    expansion = 4
     def __init__(self, in_planes, planes, stride=1, downsample=None):
         super().__init__()
         self.expansion = 4

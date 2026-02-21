@@ -63,9 +63,9 @@ class VGG(nn.Module):
 
 class VGG3D(nn.Module):
     def __init__(self,
+                 name,
                  in_channels,
                  num_classes=400,
-                 vgg_type='vgg16',
                  batch_norm=False):
 
         super(VGG3D, self).__init__()
@@ -79,10 +79,10 @@ class VGG3D(nn.Module):
                       512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M'],
         }
 
-        if vgg_type not in self.cfgs:
-            raise ValueError(f"Unsupported VGG type: {vgg_type}")
+        if name not in self.cfgs:
+            raise ValueError(f"Unsupported VGG type: {name}")
 
-        self.name = vgg_type
+        self.name = name
 
         self.features = nn.Sequential(
             *self._make_vgg3d_layers(batch_norm=batch_norm,
