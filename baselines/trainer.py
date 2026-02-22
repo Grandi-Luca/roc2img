@@ -85,6 +85,19 @@ class Trainer:
                     T_max=120
                 )
                 num_epochs = 120
+            elif self.dataset_name.lower() == 'mnist':
+                optimizer = torch.optim.SGD(
+                    self.model.parameters(),
+                    lr=0.05,
+                    momentum=0.9,
+                    weight_decay=5e-4
+                )
+                scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                    optimizer,
+                    milestones=[30, 45],
+                    gamma=0.1
+                )
+                num_epochs = 60
             else:
                 optimizer = optim.SGD(self.model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.0001)
                 scheduler = torch.optim.lr_scheduler.MultiStepLR(

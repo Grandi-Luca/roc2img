@@ -8,7 +8,7 @@ import torch.nn.functional as F
 ######################################
 
 class VGG(nn.Module):
-    def __init__(self, in_channels, num_classes=10, vgg_type='vgg16', batch_norm=False):
+    def __init__(self, name, in_channels, num_classes=10, batch_norm=False):
         super(VGG, self).__init__()
         self.cfgs = {
             'vgg11': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
@@ -17,10 +17,11 @@ class VGG(nn.Module):
             'vgg19': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M'],
         }
         
-        if vgg_type not in self.cfgs:
-            raise ValueError(f"Unsupported VGG type: {vgg_type}")
-
-        self.name = vgg_type
+        self.name = name.lower()
+        
+        if self.name not in self.cfgs:
+            raise ValueError(f"Unsupported VGG type: {self.name}")
+        
         features = nn.Sequential(*self.__make_vgg_layers(batch_norm=batch_norm, in_channels=in_channels))
         classifier = nn.Sequential(*[
             nn.Sequential(*[nn.Flatten(), nn.Linear(512, 4096), nn.ReLU(True), nn.Dropout()]),
