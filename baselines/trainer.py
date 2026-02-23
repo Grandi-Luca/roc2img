@@ -184,7 +184,7 @@ class Trainer:
         return valid_acc, tot_loss
 
 
-    def train(self, train_loader: DataLoader, valid_loader: DataLoader):
+    def train(self, train_loader: DataLoader, valid_loader: DataLoader, test_loader: DataLoader):
 
         train_time = 0.0
         valid_loss_min = np.inf        
@@ -195,17 +195,20 @@ class Trainer:
             epoch_time = time.time() - start_train
             train_time += epoch_time
             valid_acc, valid_loss = self.test_epoch(valid_loader)
+            test_acc, test_loss = self.test_epoch(test_loader)
                         
             self.logger({
                 'epoch': epoch+1,
                 'train loss': train_loss,
                 'train acc': train_acc,
                 'valid acc': valid_acc,
+                'valid loss': valid_loss,
+                'test acc': test_acc,
+                'test loss': test_loss,
                 'train time': epoch_time
             })
 
             if valid_loss <= valid_loss_min:
-                
                 self.logger.log(f"Saving model with new min validation loss: {valid_loss:.6f} at epoch: {epoch+1}")
                 valid_loss_min = valid_loss
                 torch.save(self.model.state_dict(), f'checkpoints/best_model_{self.model.__class__.__name__}.pt')
