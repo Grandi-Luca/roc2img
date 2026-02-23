@@ -35,7 +35,7 @@ def _generate_kernels(
     cout: int,
     cin: int,
     input_dhw: tuple[int, int, int] | int,
-    candidate_sizes: list,
+    candidate_lengths: list,
     padding_mode: PaddingMode,
     weight_distr_fn: Callable,
     bias_distr_fn: Callable,
@@ -61,7 +61,7 @@ def _generate_kernels(
     }[padding_mode]
 
     # Generate random kernel parameters
-    kernel_sizes = np.random.choice(candidate_sizes, cout)
+    kernel_sizes = np.random.choice(candidate_lengths, cout)
     strides = np.random.choice(candidate_strides, cout)
 
     # Initialize arrays for dilations
@@ -70,7 +70,7 @@ def _generate_kernels(
     dilations_d = np.ones(cout, dtype=np.int32)
     
     # Compute dilations for each unique size
-    for size in candidate_sizes:
+    for size in candidate_lengths:
         mask = kernel_sizes == size
         num_ker = mask.sum()
         if num_ker == 0:
@@ -114,14 +114,13 @@ class ROCKET(nn.Module):
             cout: int,
             cin: int,
             input_dhw: tuple[int, int, int] | int,
-            candidate_lengths: list[int] = [3],
-            padding_mode: PaddingMode = PaddingMode.RANDOM,
+            candidate_lengths: list[int],
+            features_to_extract: list[FeatureType],
             distr_pair: tuple[DistributionType, DistributionType] = (
                 DistributionType.GAUSSIAN_01, DistributionType.UNIFORM),
-            dilation: DilationType = DilationType.UNIFORM_ROCKET,
             candidate_strides: list[int] = [1],
-            features_to_extract: list[FeatureType] = [
-                FeatureType.PPV, FeatureType.MPV, FeatureType.MIPV, FeatureType.LSPV],
+            dilation: DilationType = DilationType.UNIFORM_ROCKET,
+            padding_mode: PaddingMode = PaddingMode.RANDOM,
             device: Optional[torch.device] = None,
             random_state=None):
 
@@ -161,17 +160,17 @@ class ROCKET(nn.Module):
 
         # Generate random convolutional kernels
         self.conv_params = _generate_kernels(
-            self.cout,
-            cin,
-            input_dhw,
-            self.candidate_lengths,
-            self.padding_mode,
-            self.distr_pair[0].fn,
-            self.distr_pair[1].fn,
-            self.dilation,
-            self.candidate_strides,
-            self.device,
-            self.random_state
+            cout=self.cout,
+            cin=cin,
+            input_dhw=input_dhw,
+            candidate_lengths=self.candidate_lengths,
+            padding_mode=self.padding_mode,
+            weight_distr_fn=self.distr_pair[0].fn,
+            bias_distr_fn=self.distr_pair[1].fn,
+            dilation_type=self.dilation,
+            candidate_strides=self.candidate_strides,
+            device=self.device,
+            random_state=self.random_state
         )
 
     def forward(self, X):
@@ -212,7 +211,7 @@ class ROCKET(nn.Module):
             data = F.conv3d(
                 input=X,
                 weight=var['weights'][0],
-                bias=None,
+                bias=var['bias'],
                 stride=stride,
                 padding=padding_1,
                 dilation=dilation_1,
