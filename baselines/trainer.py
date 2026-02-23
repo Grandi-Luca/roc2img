@@ -18,43 +18,94 @@ import time
 
 class Trainer:
 
-    def __init__(self, model: nn.Module, device: torch.device, logger: WandbLogger = None):
+    def __init__(self, model: nn.Module, dataset_name: str, device: torch.device, logger: WandbLogger = None):
         self.model = model
         self.logger = logger
         self.device = device
+        self.dataset_name = dataset_name
         
         self.model = self.model.to(self.device)
         self.optimizer, self.scheduler, self.num_epochs = self.__make_optimizer_scheduler()
-        self.criterion = nn.CrossEntropyLoss()
+        
+        if self.dataset_name.lower() == 'adni':
+            self.criterion = nn.BCEWithLogitsLoss()
+        else:
+            self.criterion = nn.CrossEntropyLoss()
+        
         
 
     def __make_optimizer_scheduler(self):
-        
-        if self.model.name.lower() == 'mlp':
-            optimizer = optim.SGD(self.model.parameters(), lr=0.05)
-            scheduler = torch.optim.lr_scheduler.MultiStepLR(
-                optimizer,
-                milestones=[100,200],
-                gamma=0.0
-            )
-            num_epochs = 300
+                
+        if 'mlp' in self.model.name.lower():
+            if self.dataset_name.lower() == 'adni':
+                optimizer = torch.optim.AdamW(
+                    self.model.parameters(),
+                    lr=1e-3,
+                    weight_decay=1e-3
+                )
+                
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                    optimizer,
+                    T_max=100
+                )
+                
+                num_epochs = 100
+            else:
+                optimizer = optim.SGD(self.model.parameters(), lr=0.05)
+                scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                    optimizer,
+                    milestones=[100,200],
+                    gamma=0.1
+                )
+                num_epochs = 300
             
         elif 'resnet' in self.model.name.lower():
-            optimizer = optim.SGD(self.model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.0005)
-            scheduler = torch.optim.lr_scheduler.MultiStepLR(
-                optimizer,
-                milestones=[60,120],
-                gamma=0.2
-            )
-            num_epochs = 160
+            
+            if self.dataset_name.lower() == 'adni':
+                optimizer = torch.optim.AdamW(self.model.parameters(), lr=1e-4, weight_decay=1e-4)
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                    optimizer,
+                    T_max=120
+                )
+                num_epochs = 120
+            else:
+                optimizer = optim.SGD(self.model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.0005)
+                scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                    optimizer,
+                    milestones=[60,120],
+                    gamma=0.2
+                )
+                num_epochs = 160
         elif 'vgg' in self.model.name.lower():
-            optimizer = optim.SGD(self.model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.0001)
-            scheduler = torch.optim.lr_scheduler.MultiStepLR(
-                optimizer,
-                milestones=[80,120],
-                gamma=0.1
-            )
-            num_epochs = 160
+            
+            if self.dataset_name.lower() == 'adni':
+                optimizer = torch.optim.AdamW(self.model.parameters(), lr=5e-5, weight_decay=1e-4)
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                    optimizer,
+                    T_max=120
+                )
+                num_epochs = 120
+            elif self.dataset_name.lower() == 'mnist':
+                optimizer = torch.optim.SGD(
+                    self.model.parameters(),
+                    lr=0.05,
+                    momentum=0.9,
+                    weight_decay=5e-4
+                )
+                scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                    optimizer,
+                    milestones=[30, 45],
+                    gamma=0.1
+                )
+                num_epochs = 60
+            else:
+                optimizer = optim.SGD(self.model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.0001)
+                scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                    optimizer,
+                    milestones=[80,120],
+                    gamma=0.1
+                )
+                num_epochs = 160
         else:
             raise ValueError(f"Unsupported model: {self.model}")
                 
@@ -66,21 +117,38 @@ class Trainer:
         correct, total = 0, 0
         train_loss = 0.0
         
-        for inputs, targets in train_loader:
+        scaler = torch.cuda.amp.GradScaler()  # mixed precision scaler
+        
+        for batch, (inputs, targets) in enumerate(train_loader):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             
             self.optimizer.zero_grad()
-            outputs = self.model(inputs)
-            loss = self.criterion(outputs, targets)
-            loss.backward()
-            self.optimizer.step()
             
-            _, predicted = outputs.max(1)
-            total += targets.size(0)
-            correct += predicted.eq(targets).sum().item()
-            train_loss += loss.item() * inputs.size(0)
+            with torch.cuda.amp.autocast():
+                outputs = self.model(inputs)
+                
+                if self.dataset_name.lower() == 'adni':
+                    targets = targets.float().unsqueeze(1)  # BCE expects shape [B,1]
+                
+                loss = self.criterion(outputs, targets)
+            
+            # backward and optimizer step with mixed precision
+            scaler.scale(loss).backward()
+            scaler.step(self.optimizer)
+            scaler.update()
+            
+            # accumulate statistics
+            batch_size = inputs.size(0)
+            train_loss += loss.item() * batch_size
+            
+            if self.dataset_name.lower() == 'adni':
+                predicted = (torch.sigmoid(outputs) > 0.5).float()
+            else:
+                _, predicted = outputs.max(1)
+            correct += (predicted == targets).sum().item()
+            total += batch_size
 
-        train_loss = train_loss / len(train_loader.dataset)
+        train_loss /= len(train_loader.dataset)
         train_acc = 100. * correct / total
         
         return train_acc, train_loss
@@ -90,25 +158,30 @@ class Trainer:
         self.model.eval()
         correct, total = 0, 0
         tot_loss = 0.0
+
+        with torch.no_grad():
+            for inputs, targets in valid_loader:
+                inputs, targets = inputs.to(self.device), targets.to(self.device)
+                
+                outputs = self.model(inputs)
+                
+                if self.dataset_name.lower() == 'adni':
+                    targets = targets.float().unsqueeze(1)
+                
+                batch_loss = self.criterion(outputs, targets)
+                tot_loss += batch_loss.item() * inputs.size(0)
+                
+                if self.dataset_name.lower() == 'adni':
+                    predicted = (torch.sigmoid(outputs) > 0.5).float()
+                else:
+                    _, predicted = outputs.max(1)
+                correct += (predicted == targets).sum().item()
+                total += inputs.size(0)
         
-        for inputs, targets in valid_loader:
-            inputs, targets = inputs.to(self.device), targets.to(self.device)
-            outputs = self.model(inputs)
+        tot_loss /= len(valid_loader.dataset)
+        valid_acc = 100. * correct / total
 
-            # calculate the batch loss
-            tot_loss = self.criterion(outputs, targets)
-            # update average loss 
-            tot_loss += tot_loss.item()*inputs.size(0)
-
-            _, predicted = outputs.max(1)
-            total += targets.size(0)
-            correct += predicted.eq(targets).sum().item()
-        
-        # calculate average losses
-        if valid_loader.sampler is not None:
-            tot_loss = tot_loss/len(valid_loader.sampler)
-
-        return 100. * correct / total, tot_loss
+        return valid_acc, tot_loss
 
 
     def train(self, train_loader: DataLoader, valid_loader: DataLoader):
@@ -152,4 +225,4 @@ class Trainer:
     def evaluate(self, test_loader: DataLoader):
         self.model.load_state_dict(torch.load(f'checkpoints/best_model_{self.model.__class__.__name__}.pt'))
         test_acc, _ = self.test_epoch(test_loader)
-        self.logger.log(f'Test Accuracy: {test_acc:.2f}%')
+        self.logger({'test acc': test_acc})
