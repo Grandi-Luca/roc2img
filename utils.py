@@ -14,6 +14,9 @@ class PaddingMode():
 
 class ConvolutionType():
     STANDARD = 'standard'
+    SPATIAL = 'spatial'
+    DEPTHWISE_SEP = 'depthwise_sep'
+    DEPTHWISE = 'depthwise'
 
 
 class FeatureType():
