@@ -103,7 +103,6 @@ if __name__ == '__main__':
         
     logger.log(config, header="Configuration")
     
-    trainer.train(train_loader, valid_loader)
-    trainer.evaluate(test_loader)
+    trainer.train(train_loader, valid_loader, test_loader)
     
     logger.finish()

@@ -66,7 +66,7 @@ def load_adni_data(rank_worldsize:str,
 
 def get_dataset_info(dataset: str):
     if dataset == "mnist":
-        input_size = (1, 28, 28)
+        input_size = (1, 32, 32)
         num_classes = 10
     elif dataset == "cifar10":
         input_size = (3, 32, 32)
