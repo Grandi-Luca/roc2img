@@ -17,31 +17,72 @@ from logger import Logger, WandbLogger
 from models.mlp import MLP, MLPAdni
 from models.resnet import ResNet, ResNet3D
 from models.vgg import VGG, VGG3D
+from models.mobilenetv4 import mobilenetv4_conv_small
 
 
 def get_model(model_name: str, dataset_name: str, input_size: tuple[int, ...], num_classes: int) -> nn.Module:
-    if 'resnet' in model_name.lower():
-        if dataset_name.lower() == 'adni':
-            model = ResNet3D(name=model_name.lower(), n_input_channels=1, widen_factor=1.0, n_classes=1)
-        else:
-            model = ResNet(name=model_name.lower(), num_classes=num_classes, in_channels=input_size[0])
-            
-    elif model_name == 'mlp':
-        flatten_size = input_size[0] * input_size[1] * input_size[2]
-        
-        if dataset_name.lower() == 'adni':
-            model = MLPAdni(input_shape=input_size, num_classes=num_classes)
-        else:
-            model = MLP(input_size=flatten_size,num_classes=num_classes)
-        
-    elif 'vgg' in model_name.lower():
-        if dataset_name.lower() == 'adni':
-            model = VGG3D(name=model_name.lower(), in_channels=1, num_classes=num_classes, batch_norm=True)
-        else:
-            model = VGG(name=model_name.lower(),num_classes=num_classes, in_channels=input_size[0], batch_norm=True)
     
+    model_name = model_name.lower()
+    dataset_name = dataset_name.lower()
+    
+    if 'resnet' in model_name:
+        if dataset_name == 'adni':
+            model = ResNet3D(
+                name=model_name,
+                n_input_channels=1,
+                widen_factor=1.0,
+                n_classes=num_classes
+            )
+        else:
+            model = ResNet(
+                name=model_name,
+                num_classes=num_classes,
+                in_channels=input_size[0]
+            )
+
+    elif model_name == 'mlp':
+        flatten_size = 1
+        for dim in input_size:
+            flatten_size *= dim
+        
+        if dataset_name == 'adni':
+            model = MLPAdni(
+                input_shape=input_size,
+                num_classes=num_classes
+            )
+        else:
+            model = MLP(
+                input_size=flatten_size,
+                num_classes=num_classes
+            )
+
+    elif 'vgg' in model_name:
+        if dataset_name == 'adni':
+            model = VGG3D(
+                name=model_name,
+                in_channels=1,
+                num_classes=num_classes,
+                batch_norm=True
+            )
+        else:
+            model = VGG(
+                name=model_name,
+                num_classes=num_classes,
+                in_channels=input_size[0],
+                batch_norm=True
+            )
+
+    elif 'mobilenet' in model_name:
+        model = mobilenetv4_conv_small(
+            dataset_name=dataset_name,
+            name=model_name,
+            num_classes=num_classes,
+            in_channels=1 if dataset_name == 'adni' else input_size[0]
+        )
+
     else:
         raise ValueError(f"Unsupported model: {model_name}")
+
     return model
 
 

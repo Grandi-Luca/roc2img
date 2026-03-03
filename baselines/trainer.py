@@ -106,6 +106,70 @@ class Trainer:
                     gamma=0.1
                 )
                 num_epochs = 160
+        elif 'mobilenet' in self.model.name.lower():
+            if self.dataset_name.lower() == 'adni':
+                optimizer = torch.optim.AdamW(
+                    self.model.parameters(),
+                    lr=2e-4,
+                    weight_decay=1e-4
+                )
+
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                    optimizer,
+                    T_max=120
+                )
+
+                num_epochs = 120
+
+            elif self.dataset_name.lower() == 'cifar100':
+                optimizer = torch.optim.SGD(
+                    self.model.parameters(),
+                    lr=0.1,
+                    momentum=0.9,
+                    weight_decay=5e-4
+                )
+
+                scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                    optimizer,
+                    milestones=[150, 225],
+                    gamma=0.1
+                )
+
+                num_epochs = 300
+
+            elif self.dataset_name.lower() == 'cifar10':
+                optimizer = torch.optim.SGD(
+                    self.model.parameters(),
+                    lr=0.1,
+                    momentum=0.9,
+                    weight_decay=5e-4
+                )
+
+                scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                    optimizer,
+                    milestones=[120, 180],
+                    gamma=0.1
+                )
+
+                num_epochs = 240
+
+            elif self.dataset_name.lower() == 'mnist':
+                optimizer = torch.optim.AdamW(
+                    self.model.parameters(),
+                    lr=1e-3,
+                    weight_decay=1e-4
+                )
+
+                scheduler = torch.optim.lr_scheduler.StepLR(
+                    optimizer,
+                    step_size=20,
+                    gamma=0.5
+                )
+
+                num_epochs = 60
+
+            else:
+                raise ValueError(f"Unsupported dataset for MobileNet: {self.dataset_name}")
         else:
             raise ValueError(f"Unsupported model: {self.model}")
                 
@@ -218,6 +282,9 @@ class Trainer:
         
         # Statistiche finali
         num_params = self.model.count_parameters()
+        self.logger({
+                'num params': num_params
+            })
         hours = int(train_time // 3600)
         minutes = int((train_time % 3600) // 60)
         seconds = int(train_time % 60)
