@@ -12,8 +12,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import SubsetRandomSampler
 
-from sklearn.svm import SVC
-from sklearn.svm import LinearSVC
+from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import accuracy_score
 
 import numpy as np
@@ -309,60 +308,110 @@ class Trainer:
         return X, y
     
     def train_pca_net(self, train_loader, valid_loader, test_loader):
-        
         with torch.no_grad():
+
+            # ---------------------------------------
+            # Load raw images once (needed for PCA)
+            # ---------------------------------------
             X_train, y_train = self.get_x_y_from_loader(train_loader)
             X_test, y_test = self.get_x_y_from_loader(test_loader)
 
-            # ------------------
-            # Train PCANet
-            # ------------------
+            # ---------------------------------------
+            # FIT PCANet (safe already)
+            # ---------------------------------------
+            self.logger.log("Fitting PCANet...")
             start_time = time.time()
-            self.logger.log("Fiiting PCANet...")
             self.model.fit(X_train)
             train_time = time.time() - start_time
 
-            # ------------------
-            # Transform train
-            # ------------------
-            start_time = time.time()
-            self.logger.log("Transforming train set with PCANet...")
-            X_train_transf = self.model.transform(X_train)
-            transform_time = time.time() - start_time
+            # ---------------------------------------
+            # Train Linear SVM in streaming mode
+            # ---------------------------------------
+            self.logger.log("Training linear SVM (streaming)...")
 
-            # ------------------
-            # Train Linear SVM (paper-consistent)
-            # ------------------
+            classifier = SGDClassifier(
+                loss="hinge",        # linear SVM
+                alpha=1e-4,
+                max_iter=1,
+                warm_start=True
+            )
+
+            classes = np.unique(y_train)
+
+            batch_size = 256
+            n_samples = len(X_train)
+
             start_time = time.time()
-            self.logger.log("Training Linear SVM on PCANet features...")
-            classifier = LinearSVC(C=10)
-            classifier.fit(X_train_transf, y_train)
+
+            for i in range(0, n_samples, batch_size):
+
+                batch_imgs = X_train[i:i+batch_size]
+                batch_labels = y_train[i:i+batch_size]
+
+                # Transform ONLY this batch
+                batch_features = self.model.transform(batch_imgs)
+
+                # First call requires classes=
+                if i == 0:
+                    classifier.partial_fit(batch_features, batch_labels, classes=classes)
+                else:
+                    classifier.partial_fit(batch_features, batch_labels)
+
             classifier_time = time.time() - start_time
 
-            # ------------------
-            # Train Accuracy
-            # ------------------
-            self.logger.log("Evaluating train set predictions...")
-            train_pred = classifier.predict(X_train_transf)
-            train_acc = accuracy_score(y_train, train_pred)
+            # ---------------------------------------
+            # Evaluate Train Accuracy (streaming)
+            # ---------------------------------------
+            self.logger.log("Evaluating train accuracy...")
 
-            # ------------------
-            # Test
-            # ------------------
+            train_correct = 0
+            train_total = 0
+
+            for i in range(0, n_samples, batch_size):
+
+                batch_imgs = X_train[i:i+batch_size]
+                batch_labels = y_train[i:i+batch_size]
+
+                batch_features = self.model.transform(batch_imgs)
+                preds = classifier.predict(batch_features)
+
+                train_correct += (preds == batch_labels).sum()
+                train_total += len(batch_labels)
+
+            train_acc = train_correct / train_total
+
+            # ---------------------------------------
+            # Evaluate Test Accuracy (streaming)
+            # ---------------------------------------
+            self.logger.log("Evaluating test accuracy...")
+
+            test_correct = 0
+            test_total = 0
+            n_test = len(X_test)
+
             start_time = time.time()
-            self.logger.log("Transforming test set with PCANet...")
-            X_test_transf = self.model.transform(X_test)
+
+            for i in range(0, n_test, batch_size):
+
+                batch_imgs = X_test[i:i+batch_size]
+                batch_labels = y_test[i:i+batch_size]
+
+                batch_features = self.model.transform(batch_imgs)
+                preds = classifier.predict(batch_features)
+
+                test_correct += (preds == batch_labels).sum()
+                test_total += len(batch_labels)
+
             test_transform_time = time.time() - start_time
+            test_acc = test_correct / test_total
 
-            self.logger.log("Evaluating test set predictions...")
-            y_pred = classifier.predict(X_test_transf)
-            test_acc = accuracy_score(y_test, y_pred)
+            total_time = train_time + classifier_time + test_transform_time
 
-            total_time = train_time + transform_time + classifier_time + test_transform_time
-
+            # ---------------------------------------
+            # Log
+            # ---------------------------------------
             self.logger({
                 'train time': train_time,
-                'transform time': transform_time,
                 'classifier time': classifier_time,
                 'test transform time': test_transform_time,
                 'total time': total_time,
