@@ -12,6 +12,10 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import SubsetRandomSampler
 
+from sklearn.svm import SVC
+from sklearn.svm import LinearSVC
+from sklearn.metrics import accuracy_score
+
 import numpy as np
 from logger import WandbLogger
 import time
@@ -24,17 +28,11 @@ class Trainer:
         self.device = device
         self.dataset_name = dataset_name
         
-        self.model = self.model.to(self.device)
-        self.optimizer, self.scheduler, self.num_epochs = self.__make_optimizer_scheduler()
-        
-        if self.dataset_name.lower() == 'adni':
-            self.criterion = nn.BCEWithLogitsLoss()
-        else:
-            self.criterion = nn.CrossEntropyLoss()
+        self.optimizer, self.scheduler, self.num_epochs , self.criterion = None, None, None, None
         
         
 
-    def __make_optimizer_scheduler(self):
+    def __make_optimizer(self):
                 
         if 'mlp' in self.model.name.lower():
             if self.dataset_name.lower() == 'adni':
@@ -172,8 +170,15 @@ class Trainer:
                 raise ValueError(f"Unsupported dataset for MobileNet: {self.dataset_name}")
         else:
             raise ValueError(f"Unsupported model: {self.model}")
-                
-        return optimizer, scheduler, num_epochs
+        
+        self.optimizer = optimizer
+        self.scheduler = scheduler
+        self.num_epochs = num_epochs
+        
+        if self.dataset_name.lower() == 'adni':
+            self.criterion = nn.BCEWithLogitsLoss()
+        else:
+            self.criterion = nn.CrossEntropyLoss()
         
 
     def train_epoch(self, train_loader: DataLoader):
@@ -251,7 +256,10 @@ class Trainer:
     def train(self, train_loader: DataLoader, valid_loader: DataLoader, test_loader: DataLoader):
 
         train_time = 0.0
-        valid_loss_min = np.inf        
+        valid_loss_min = np.inf
+        
+        self.model = self.model.to(self.device)
+        self.__make_optimizer()        
 
         for epoch in range(self.num_epochs):
             start_train = time.time()
@@ -290,9 +298,82 @@ class Trainer:
         seconds = int(train_time % 60)
         
         self.logger.log(f'Training completed in {hours}h {minutes}m {seconds}s with {num_params:,} parameters over {epoch+1} epochs.')
+    
+    def get_x_y_from_loader(self, loader: DataLoader):
+        X, y = [], []
+        for inputs, targets in loader:
+            X.append(inputs.permute(0, 2, 3, 1).cpu().numpy())
+            y.append(targets.cpu().numpy())
+        X = np.concatenate(X, axis=0)
+        y = np.concatenate(y, axis=0)
+        return X, y
+    
+    def train_pca_net(self, train_loader, valid_loader, test_loader):
         
+        with torch.no_grad():
+            X_train, y_train = self.get_x_y_from_loader(train_loader)
+            X_test, y_test = self.get_x_y_from_loader(test_loader)
+
+            # ------------------
+            # Train PCANet
+            # ------------------
+            start_time = time.time()
+            self.model.fit(X_train)
+            train_time = time.time() - start_time
+
+            # ------------------
+            # Transform train
+            # ------------------
+            start_time = time.time()
+            X_train_transf = self.model.transform(X_train)
+            transform_time = time.time() - start_time
+
+            # ------------------
+            # Train Linear SVM (paper-consistent)
+            # ------------------
+            start_time = time.time()
+            classifier = LinearSVC(C=10)
+            classifier.fit(X_train_transf, y_train)
+            classifier_time = time.time() - start_time
+
+            # ------------------
+            # Train Accuracy
+            # ------------------
+            train_pred = classifier.predict(X_train_transf)
+            train_acc = accuracy_score(y_train, train_pred)
+
+            # ------------------
+            # Test
+            # ------------------
+            start_time = time.time()
+            X_test_transf = self.model.transform(X_test)
+            test_transform_time = time.time() - start_time
+
+            y_pred = classifier.predict(X_test_transf)
+            test_acc = accuracy_score(y_test, y_pred)
+
+            total_time = train_time + transform_time + classifier_time + test_transform_time
+
+            self.logger({
+                'train time': train_time,
+                'transform time': transform_time,
+                'classifier time': classifier_time,
+                'test transform time': test_transform_time,
+                'total time': total_time,
+                'train acc': train_acc,
+                'test acc': test_acc
+            })
+    
+    
+    def start_train(self, train_loader: DataLoader, valid_loader: DataLoader, test_loader: DataLoader):
+        if self.model.name.lower() != 'pcanet':
+            self.train(train_loader, valid_loader, test_loader)
+        else:
+            self.train_pca_net(train_loader, valid_loader, test_loader)
+            
 
     def evaluate(self, test_loader: DataLoader):
         self.model.load_state_dict(torch.load(f'checkpoints/best_model_{self.model.__class__.__name__}.pt'))
+        self.model = self.model.to(self.device)
         test_acc, _ = self.test_epoch(test_loader)
         self.logger({'test acc': test_acc})
