@@ -318,6 +318,7 @@ class Trainer:
             # Train PCANet
             # ------------------
             start_time = time.time()
+            self.logger.log("Fiiting PCANet...")
             self.model.fit(X_train)
             train_time = time.time() - start_time
 
@@ -325,6 +326,7 @@ class Trainer:
             # Transform train
             # ------------------
             start_time = time.time()
+            self.logger.log("Transforming train set with PCANet...")
             X_train_transf = self.model.transform(X_train)
             transform_time = time.time() - start_time
 
@@ -332,6 +334,7 @@ class Trainer:
             # Train Linear SVM (paper-consistent)
             # ------------------
             start_time = time.time()
+            self.logger.log("Training Linear SVM on PCANet features...")
             classifier = LinearSVC(C=10)
             classifier.fit(X_train_transf, y_train)
             classifier_time = time.time() - start_time
@@ -339,6 +342,7 @@ class Trainer:
             # ------------------
             # Train Accuracy
             # ------------------
+            self.logger.log("Evaluating train set predictions...")
             train_pred = classifier.predict(X_train_transf)
             train_acc = accuracy_score(y_train, train_pred)
 
@@ -346,9 +350,11 @@ class Trainer:
             # Test
             # ------------------
             start_time = time.time()
+            self.logger.log("Transforming test set with PCANet...")
             X_test_transf = self.model.transform(X_test)
             test_transform_time = time.time() - start_time
 
+            self.logger.log("Evaluating test set predictions...")
             y_pred = classifier.predict(X_test_transf)
             test_acc = accuracy_score(y_test, y_pred)
 

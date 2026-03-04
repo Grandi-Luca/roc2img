@@ -85,7 +85,7 @@ def block_histograms(images, block_shape, step_shape, n_bins):
 class PCANet:
 
     def __init__(self,
-                 name="PCANet",
+                 name,
                  image_shape,
                  filter_shape_l1, step_shape_l1, n_l1_output,
                  filter_shape_l2, step_shape_l2, n_l2_output,
