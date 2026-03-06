@@ -5,7 +5,7 @@ MobileNetV4 - Universal Models for the Mobile Ecosystem
 arXiv preprint arXiv:2404.10518.
 
 
-CODE TAKEN FROM:https://github.com/d-li14/mobilenetv4.pytorch.git
+CODE ADAPTED FROM:https://github.com/d-li14/mobilenetv4.pytorch.git
 
 
 """

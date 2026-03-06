@@ -18,6 +18,7 @@ from models.mlp import MLP, MLPAdni
 from models.resnet import ResNet, ResNet3D
 from models.vgg import VGG, VGG3D
 from models.mobilenetv4 import mobilenetv4_conv_small
+from models.pcanet import build_pcanet_model
 
 
 def get_model(model_name: str, dataset_name: str, input_size: tuple[int, ...], num_classes: int) -> nn.Module:
@@ -79,6 +80,9 @@ def get_model(model_name: str, dataset_name: str, input_size: tuple[int, ...], n
             num_classes=num_classes,
             in_channels=1 if dataset_name == 'adni' else input_size[0]
         )
+    
+    elif 'pcanet' in model_name:
+        model = build_pcanet_model(dataset_name=dataset_name)
 
     else:
         raise ValueError(f"Unsupported model: {model_name}")
@@ -131,7 +135,8 @@ if __name__ == '__main__':
     trainer = Trainer(model, 
                       dataset_name=args.dataset,
                       device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'), 
-                      logger=logger)
+                      logger=logger,
+                      seed=args.seed)
     
     config = {
             'model': trainer.model.__class__.__name__,
@@ -144,6 +149,6 @@ if __name__ == '__main__':
         
     logger.log(config, header="Configuration")
     
-    trainer.train(train_loader, valid_loader, test_loader)
+    trainer.start_train(train_loader, valid_loader, test_loader)
     
     logger.finish()
