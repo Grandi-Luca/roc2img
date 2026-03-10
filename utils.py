@@ -30,6 +30,7 @@ class FeatureType():
     ENTROPY = 'entropy'
     MAX2D = 'max2d'
     AVG2D = 'avg2d'
+    GAP = 'gap'
 
 
 class DilationType():

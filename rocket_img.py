@@ -353,6 +353,8 @@ class ROCKET(nn.Module):
                 elif feature == FeatureType.MINPV:
                     features_list.append(data.min(-1).values)
 
+                elif feature == FeatureType.GAP:
+                    features_list.append(data.mean(-1))
 
                 # Computing Generalized Mean Pooling
                 elif feature == FeatureType.GMPV:
