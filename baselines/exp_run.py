@@ -135,7 +135,8 @@ if __name__ == '__main__':
     trainer = Trainer(model, 
                       dataset_name=args.dataset,
                       device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'), 
-                      logger=logger)
+                      logger=logger,
+                      seed=args.seed)
     
     config = {
             'model': trainer.model.__class__.__name__,
