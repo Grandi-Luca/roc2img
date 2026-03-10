@@ -42,12 +42,12 @@ def load_dataset_numpy(dataset: str):
         
     elif dataset == "adni":
         (X_train, y_train), (X_test, y_test) = load_adni_data(
-            rank_worldsize='1,1',
-            adni_num=1,
-            data_dir='/mnt/shared_nfs/brunofolder/MERGE/WALTER/IMGS/a1',
-            img_dir='ADNI1_ALL_T1',
-            csv_path='/mnt/shared_nfs/brunofolder/MERGE/WALTER/IMGS/ADNI_csv',
-            csv_filename='ADNI_ready.csv'
+            rank_worldsize= '1, 1',
+            adni_num= 1,
+            data_dir= 'path/to/ADNI/data',
+            img_dir= 'ADNI1_ALL_T1',
+            csv_path= 'path/to/ADNI/csv',
+            csv_filename= 'ADNI_ready.csv',
         )
         train_set = TensorDataset(X_train.unsqueeze(1), y_train)
         test_set = TensorDataset(X_test.unsqueeze(1), y_test)
