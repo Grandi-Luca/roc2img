@@ -1,6 +1,8 @@
 import numpy as np
 import torch
+from datasets import load_adni_data
 from torchvision import datasets, transforms
+from torch.utils.data import TensorDataset
 
 
 def load_dataset_numpy(dataset: str):
@@ -37,7 +39,19 @@ def load_dataset_numpy(dataset: str):
 
         train_set = datasets.CIFAR100('../data/cifar100/', train=True, download=True, transform=transform)
         test_set  = datasets.CIFAR100('../data/cifar100/', train=False, download=True, transform=transform)
-
+        
+    elif dataset == "adni":
+        (X_train, y_train), (X_test, y_test) = load_adni_data(
+            rank_worldsize='1,1',
+            adni_num=1,
+            data_dir='/mnt/shared_nfs/brunofolder/MERGE/WALTER/IMGS/a1',
+            img_dir='ADNI1_ALL_T1',
+            csv_path='/mnt/shared_nfs/brunofolder/MERGE/WALTER/IMGS/ADNI_csv',
+            csv_filename='ADNI_ready.csv'
+        )
+        train_set = TensorDataset(X_train.unsqueeze(1), y_train)
+        test_set = TensorDataset(X_test.unsqueeze(1), y_test)
+        
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
 
@@ -49,12 +63,22 @@ def load_dataset_numpy(dataset: str):
     y_test = torch.tensor([test_set[i][1] for i in range(len(test_set))])
 
     # Converti in numpy SENZA cambiare ordine (resta N,C,H,W)
-    return (
-        X_train.numpy().astype(np.float32),
-        y_train.numpy().astype(np.int64),
-        X_test.numpy().astype(np.float32),
-        y_test.numpy().astype(np.int64),
-    )
+    X_train = X_train.numpy().astype(np.float32)
+    y_train = y_train.numpy().astype(np.int64)
+    X_test = X_test.numpy().astype(np.float32)
+    y_test = y_test.numpy().astype(np.int64)
+    
+    adni_strategy = "tri_axis_middle"
+    adni_axis = -1
+    
+    if dataset == "adni" and X_train.ndim == 5:
+        print(f"[ADNI] Reducing 3D volumes with strategy='{adni_strategy}', axis={adni_axis}")
+        print(f"  Before: X_train {X_train.shape}, X_test {X_test.shape}")
+        X_train = reduce_adni_3d_to_2d(X_train, strategy=adni_strategy, axis=adni_axis)
+        X_test  = reduce_adni_3d_to_2d(X_test,  strategy=adni_strategy, axis=adni_axis)
+        print(f"  After:  X_train {X_train.shape}, X_test {X_test.shape}")
+
+    return (X_train, y_train, X_test, y_test)
 
 
 def data_transform(X: np.ndarray, channel_handling: str, channel_method: str) -> np.ndarray:
@@ -201,3 +225,174 @@ def _spatial_flat_indices(H: int, W: int, method: str):
         return coords[:, 1] """
 
     raise ValueError(f"Unsupported channel_method: {method}")
+
+
+
+def reduce_adni_3d_to_2d(
+    X: np.ndarray,
+    strategy: str = "mean_max_std",
+    axis: int = -1,
+    n_slices: int = 3,
+    resize: tuple[int, int] | None = None,
+) -> np.ndarray:
+    """Reduce 3D ADNI brain volumes to 2D images.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Shape (N, 1, D1, D2, D3), e.g. (324, 1, 91, 109, 91).
+    strategy : str
+        How to collapse the 3D volume along `axis`:
+        - "middle"             : single middle slice → (N, 1, H, W)
+        - "mean"               : mean projection → (N, 1, H, W)
+        - "max"                : max intensity projection → (N, 1, H, W)
+        - "multi_slice"        : n_slices equally-spaced slices as channels → (N, n_slices, H, W)
+        - "tri_axis_middle"    : middle slice from each of 3 axes → (N, 3, H', W')
+                                 (resized to common shape)
+        - "mean_max_std"       : [mean, max, std] along axis → (N, 3, H, W) RECOMMENDED
+        - "weighted_mean"      : variance-weighted mean → (N, 1, H, W)
+    axis : int
+        Spatial axis along which to project (2, 3, or 4 in NCHWD order).
+        Default -1 = last spatial axis (axial in typical ADNI orientation).
+    n_slices : int
+        Number of slices for "multi_slice" strategy.
+    resize : tuple or None
+        If given, resize the output spatial dims to (H, W) using bilinear interpolation.
+
+    Returns
+    -------
+    np.ndarray with shape (N, C, H, W) — ready for standard 2D pipelines.
+    """
+    if X.ndim != 5:
+        raise ValueError(f"Expected 5D input (N,1,D1,D2,D3), got shape {X.shape}")
+
+    N = X.shape[0]
+    # Squeeze the channel dim for easier manipulation: (N, D1, D2, D3)
+    V = X[:, 0]
+
+    # Normalize axis to be relative to the volume dims (0, 1, 2 within D1,D2,D3)
+    vol_axis = axis if axis >= 0 else V.ndim - 1 + (axis + 1)  # map -1→last spatial
+    if vol_axis < 1:
+        vol_axis = V.ndim - 1  # default to last
+    spatial_axis = vol_axis  # axis index within (N, D1, D2, D3)
+
+    strategy = strategy.lower()
+
+    if strategy == "middle":
+        mid = V.shape[spatial_axis] // 2
+        slc = _take_slice(V, spatial_axis, mid)  # (N, H, W)
+        out = slc[:, np.newaxis]  # (N, 1, H, W)
+
+    elif strategy == "mean":
+        out = V.mean(axis=spatial_axis)[:, np.newaxis]
+
+    elif strategy == "max":
+        out = V.max(axis=spatial_axis)[:, np.newaxis]
+
+    elif strategy == "weighted_mean":
+        # Weight each slice by its variance (more informative slices contribute more)
+        # Variance per slice: compute var over spatial dims for each slice
+        var_per_slice = _variance_per_slice(V, spatial_axis)  # (N, num_slices)
+        weights = var_per_slice / (var_per_slice.sum(axis=-1, keepdims=True) + 1e-8)
+        # Weighted sum along the projection axis
+        out = _weighted_sum_along_axis(V, spatial_axis, weights)[:, np.newaxis]
+
+    elif strategy == "multi_slice":
+        num_total = V.shape[spatial_axis]
+        indices = np.linspace(0, num_total - 1, n_slices, dtype=int)
+        channels = [_take_slice(V, spatial_axis, idx) for idx in indices]
+        out = np.stack(channels, axis=1)  # (N, n_slices, H, W)
+
+    elif strategy == "tri_axis_middle":
+        # Middle slice from each spatial axis → 3 channels
+        # These have different shapes, so we resize to a common shape
+        slices = []
+        for ax in [1, 2, 3]:  # D1, D2, D3 axes in (N, D1, D2, D3)
+            mid = V.shape[ax] // 2
+            s = _take_slice(V, ax, mid)  # (N, H_i, W_i)
+            slices.append(s)
+
+        # Determine common shape (max of all dims or user-specified resize)
+        if resize is None:
+            max_h = max(s.shape[1] for s in slices)
+            max_w = max(s.shape[2] for s in slices)
+            target = (max_h, max_w)
+        else:
+            target = resize
+
+        resized = [_resize_2d_batch(s, target) for s in slices]
+        out = np.stack(resized, axis=1)  # (N, 3, H, W)
+
+    elif strategy == "mean_max_std":
+        ch_mean = V.mean(axis=spatial_axis)
+        ch_max = V.max(axis=spatial_axis)
+        ch_std = V.std(axis=spatial_axis)
+        out = np.stack([ch_mean, ch_max, ch_std], axis=1)  # (N, 3, H, W)
+
+    else:
+        raise ValueError(
+            f"Unknown strategy '{strategy}'. Choose from: "
+            "middle, mean, max, weighted_mean, multi_slice, tri_axis_middle, mean_max_std"
+        )
+
+    # Optional resize
+    if resize is not None and strategy != "tri_axis_middle":
+        C = out.shape[1]
+        resized_channels = []
+        for c in range(C):
+            resized_channels.append(_resize_2d_batch(out[:, c], resize))
+        out = np.stack(resized_channels, axis=1)
+
+    return out.astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _take_slice(V: np.ndarray, axis: int, index: int) -> np.ndarray:
+    """Take a single slice along `axis` from array V."""
+    return np.take(V, index, axis=axis)
+
+
+def _variance_per_slice(V: np.ndarray, axis: int) -> np.ndarray:
+    """Compute per-slice variance for weighting. Returns (N, num_slices)."""
+    num_slices = V.shape[axis]
+    # Move projection axis to the end for easy iteration
+    V_moved = np.moveaxis(V, axis, -1)  # (N, ..., num_slices)
+    # Reshape to (N, pixels, num_slices)
+    N = V.shape[0]
+    V_flat = V_moved.reshape(N, -1, num_slices)
+    return V_flat.var(axis=1)  # (N, num_slices)
+
+
+def _weighted_sum_along_axis(V: np.ndarray, axis: int, weights: np.ndarray) -> np.ndarray:
+    """Weighted sum of slices along `axis`. weights: (N, num_slices)."""
+    V_moved = np.moveaxis(V, axis, -1)  # (N, H, W, num_slices)
+    # Broadcast weights: (N, 1, 1, num_slices) or similar
+    w_shape = [1] * V_moved.ndim
+    w_shape[0] = weights.shape[0]
+    w_shape[-1] = weights.shape[1]
+    w = weights.reshape(w_shape)
+    return (V_moved * w).sum(axis=-1)  # (N, H, W)
+
+
+def _resize_2d_batch(imgs: np.ndarray, target_hw: tuple[int, int]) -> np.ndarray:
+    """Simple bilinear resize for a batch (N, H, W) → (N, H', W').
+    Uses numpy-only approach (no extra deps beyond scipy which is usually available).
+    """
+    try:
+        from scipy.ndimage import zoom
+    except ImportError:
+        # Fallback: nearest-neighbor via simple indexing
+        N, H, W = imgs.shape
+        th, tw = target_hw
+        row_idx = (np.arange(th) * H / th).astype(int).clip(0, H - 1)
+        col_idx = (np.arange(tw) * W / tw).astype(int).clip(0, W - 1)
+        return imgs[:, row_idx[:, None], col_idx[None, :]]
+
+    N, H, W = imgs.shape
+    th, tw = target_hw
+    zh, zw = th / H, tw / W
+    # Zoom only spatial dims, not batch
+    return zoom(imgs, (1, zh, zw), order=1)
