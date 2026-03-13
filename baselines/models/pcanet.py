@@ -568,6 +568,7 @@ def build_pcanet_model(dataset_name):
             filter_shape_l2=5, step_shape_l2=1, n_l2_output=8,
             block_shape=7, block_step=3
         )
+        return PCANet(**params)
 
     elif dataset_name in ["cifar10", "cifar100"]:
         params = dict(
