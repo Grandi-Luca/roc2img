@@ -273,8 +273,6 @@ class PCANet:
 
         return np.vstack(features).astype(np.float64)
 
-<<<<<<< HEAD
-=======
 #########################################
 # 3D PCANet
 ########################################
@@ -556,7 +554,6 @@ class PCANet3D:
         return np.vstack(features).astype(np.float64)
 
 
->>>>>>> dc97f1b1ad0d6d870843eabdcb8f1c17d9a1c303
 # ============================================================
 # Factory
 # ============================================================
@@ -571,10 +568,6 @@ def build_pcanet_model(dataset_name):
             filter_shape_l2=5, step_shape_l2=1, n_l2_output=8,
             block_shape=7, block_step=3
         )
-<<<<<<< HEAD
-=======
-        return PCANet(**params)
->>>>>>> dc97f1b1ad0d6d870843eabdcb8f1c17d9a1c303
 
     elif dataset_name in ["cifar10", "cifar100"]:
         params = dict(
@@ -584,13 +577,6 @@ def build_pcanet_model(dataset_name):
             filter_shape_l2=5, step_shape_l2=1, n_l2_output=8,
             block_shape=8, block_step=4
         )
-<<<<<<< HEAD
-
-    else:
-        raise ValueError(f"Unsupported dataset: {dataset_name}")
-
-    return PCANet(**params)
-=======
         return PCANet(**params)
     elif dataset_name == "adni":
         params = dict(
@@ -605,4 +591,3 @@ def build_pcanet_model(dataset_name):
 
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
->>>>>>> dc97f1b1ad0d6d870843eabdcb8f1c17d9a1c303

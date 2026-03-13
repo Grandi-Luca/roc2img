@@ -237,7 +237,7 @@ class ResNet3D(nn.Module):
             block = BasicBlock3D
             layers = [3, 4, 6, 3]
         elif self.name.lower() == 'resnet50':
-            block = BottleNeck3D
+            block = Bottleneck3D
             layers = [3, 4, 6, 3]
         else:
             raise ValueError(f"Unsupported ResNet type: {self.name}") 
