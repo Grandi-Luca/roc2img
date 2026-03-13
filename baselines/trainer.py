@@ -300,15 +300,6 @@ class Trainer:
         
         self.logger.log(f'Training completed in {hours}h {minutes}m {seconds}s with {num_params:,} parameters over {epoch+1} epochs.')
     
-<<<<<<< HEAD
-    def get_x_y_from_loader(self, loader: DataLoader):
-        X, y = [], []
-        for inputs, targets in loader:
-            X.append(inputs.permute(0, 2, 3, 1).cpu().numpy())
-            y.append(targets.cpu().numpy())
-        X = np.concatenate(X, axis=0)
-        y = np.concatenate(y, axis=0)
-=======
     def get_x_y_from_loader(self, loader):
 
         X = []
@@ -332,7 +323,6 @@ class Trainer:
         X = np.concatenate(X, axis=0)
         y = np.concatenate(y, axis=0)
 
->>>>>>> dc97f1b1ad0d6d870843eabdcb8f1c17d9a1c303
         return X, y
     
     def train_pca_net(self, train_loader, valid_loader, test_loader):
@@ -361,12 +351,8 @@ class Trainer:
                 loss="hinge",        # linear SVM
                 alpha=1e-4,
                 max_iter=1,
-<<<<<<< HEAD
-                warm_start=True
-=======
                 warm_start=True,
                 random_state=self.seed
->>>>>>> dc97f1b1ad0d6d870843eabdcb8f1c17d9a1c303
             )
 
             classes = np.unique(y_train)
@@ -391,13 +377,10 @@ class Trainer:
                     classifier.partial_fit(batch_features, batch_labels)
 
             classifier_time = time.time() - start_time
-<<<<<<< HEAD
-=======
             
             
             num_params = classifier.coef_.size + classifier.intercept_.size
             method_time = train_time + classifier_time
->>>>>>> dc97f1b1ad0d6d870843eabdcb8f1c17d9a1c303
 
             # ---------------------------------------
             # Evaluate Train Accuracy (streaming)
@@ -453,28 +436,17 @@ class Trainer:
             self.logger({
                 'train time': train_time,
                 'classifier time': classifier_time,
-<<<<<<< HEAD
-                'test transform time': test_transform_time,
-                'total time': total_time,
-                'train acc': train_acc,
-                'test acc': test_acc
-=======
                 'method time': method_time,
                 'test transform time': test_transform_time,
                 'total time': total_time,
                 'train acc': train_acc,
                 'test acc': test_acc,
                 'num params': num_params
->>>>>>> dc97f1b1ad0d6d870843eabdcb8f1c17d9a1c303
             })
     
     
     def start_train(self, train_loader: DataLoader, valid_loader: DataLoader, test_loader: DataLoader):
-<<<<<<< HEAD
-        if self.model.name.lower() != 'pcanet':
-=======
         if 'pcanet' not in self.model.name.lower():
->>>>>>> dc97f1b1ad0d6d870843eabdcb8f1c17d9a1c303
             self.train(train_loader, valid_loader, test_loader)
         else:
             self.train_pca_net(train_loader, valid_loader, test_loader)
