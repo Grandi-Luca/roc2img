@@ -61,3 +61,54 @@ def _set_random_seed(seed):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
         os.environ['PYTHONHASHSEED'] = str(seed)
+
+
+class GeneralizedMeanPooling(nn.Module):
+    def __init__(self, p: int) -> None:
+        super().__init__()
+        self.p: int = p
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return (x.flatten(-2)**self.p).mean(-1)**(1/self.p)
+
+    def get_output_size(self) -> int:
+        return (1,1)
+
+class AGeM(nn.Module):
+    def __init__(self, p: int, output_size: int | tuple[int, int]) -> None:
+        super().__init__()
+
+        assert p > 0, "p must be greater than 0"
+        self.p: int = p
+        self.output_size: tuple[int, int] = output_size if isinstance(output_size, tuple) else (output_size, output_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out: torch.Tensor = F.adaptive_avg_pool2d(x.pow(self.p), self.output_size).pow(1.0 / self.p)
+        return out
+
+    def get_output_size(self) -> int | tuple[int, int]:
+        return self.output_size
+
+class AAP(nn.Module):
+    def __init__(self, output_size: int | tuple[int, int]) -> None:
+        super().__init__()
+        self.output_size: tuple[int, int] = output_size if isinstance(output_size, tuple) else (output_size, output_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out: torch.Tensor = F.adaptive_avg_pool2d(x, self.output_size)
+        return out
+
+    def get_output_size(self) -> int | tuple[int, int]:
+        return self.output_size
+
+class AMP(nn.Module):
+    def __init__(self, output_size: int | tuple[int, int]) -> None:
+        super().__init__()
+        self.output_size: tuple[int, int] = output_size if isinstance(output_size, tuple) else (output_size, output_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = F.adaptive_max_pool2d(x, self.output_size)
+        return out
+
+    def get_output_size(self) -> int | tuple[int, int]:
+        return self.output_size

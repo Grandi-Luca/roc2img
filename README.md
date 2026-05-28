@@ -1,115 +1,88 @@
-# ROCKET for Image Classification
+# roc2img-1
 
-An implementation of ROCKET (RandOm Convolutional KErnel Transform) for image classification, with support for various weight and bias distributions extracted from pre-trained ResNet models.
+This repository contains experimental implementations for image feature extraction based on randomized convolutional kernels (ROCKET-style approach) and utilities to train lightweight classifiers on the extracted features. The main component is `RocketNet`, a network that builds fixed-size representations from images using randomized convolutional layers and adaptive pooling.
 
-## What is ROCKET?
+**Main contents**
+- `rocketnet.py`: implementation of `RocketNet`, `RocketLayer` and `SeqRocketLayer` (randomized feature extractors).
+- `utils.py`: helpers for custom pooling, random seed control and utility types.
+- `baselines/`: scripts and implementations for evaluation and experimental runs.
 
-ROCKET is a feature extraction technique based on random convolutions, originally developed for time series. This implementation extends ROCKET to work with 2D images, using convolutional kernels generated from various distributions, including those derived from weights and biases of pre-trained ResNet models.
+**Goal**
+Provide a fast, optionally deterministic feature extractor that can be paired with linear classifiers (e.g. `RidgeClassifier`) for quick computer vision experiments.
 
-## Installation
+**Minimal installation**
+Required packages: Python 3.8+, PyTorch, torchvision, scikit-learn, numpy.
+
+Quick install (no virtualenv shown):
 
 ```bash
-pip install numpy torch torchvision scikit-learn pandas
+pip install torch torchvision scikit-learn numpy
 ```
 
-## Basic Usage
+**Core idea: how `RocketNet` works**
+
+- `RocketLayer` / `SeqRocketLayer`:
+  - Initialize convolutional kernels with randomly sampled weights and biases (normal/uniform).
+  - Each kernel can have randomized dilation and padding (or deterministic values if specified) to capture responses at multiple scales.
+  - After convolution a non-linearity (`ReLU`) is applied and then one or more adaptive pooling operations (e.g. AAP, AMP, AGeM defined in `utils.py`).
+  - `SeqRocketLayer` applies convolutions sequentially per output channel; `RocketLayer` groups kernels that share the same dilation/padding parameters to optimize computation and memory.
+
+- `RocketNet`:
+  - Composes multiple Rocket blocks/layers (passed as tuples describing class and parameters).
+  - Runs in `eval()` mode (used as a feature extractor, not trained via backprop here).
+  - Returns the concatenation of features produced by all blocks for each batch example.
+
+**Typical usage**
+
+1. Instantiate `RocketNet` with desired layers and device (CPU/GPU).
+2. Feed image batches to obtain fixed feature vectors.
+3. Train a simple classifier (e.g. `RidgeClassifier`) on the extracted features.
+
+Minimal example:
 
 ```python
 import torch
-from rocket_img import ROCKET
-from utils import ConvolutionType, FeatureType, DilationType
-from distributions import DistributionType
-
-# Create the ROCKET model
-rocket = ROCKET(
-    cout=1000,                          # Number of random kernels
-    candidate_lengths=[3, 5, 7],        # Kernel sizes
-    distr_pair=(                        # Distributions for weights and biases
-        DistributionType.GAUSSIAN_01,
-        DistributionType.UNIFORM
-    ),
-    features_to_extract=[FeatureType.PPV],  # Features to extract
-    dilation=DilationType.UNIFORM_ROCKET,    # Dilation type
-    convolution_type=ConvolutionType.STANDARD,
-    random_state=42
-)
-
-# Sample data
-X_train = torch.rand(100, 3, 32, 32)  # [batch, channels, height, width]
-y_train = torch.randint(0, 10, (100,))  # 100 labels
-X_test = torch.rand(20, 3, 32, 32)    # [batch, channels, height, width]
-y_test = torch.randint(0, 10, (20,))    # 20 labels
-
-# Generate kernels (fit)
-rocket.fit(X_train)
-
-# Transform data
-X_train_features = rocket.transform(X_train)  # Output: numpy array [100, cout]
-X_test_features = rocket.transform(X_test)    # Output: numpy array [20, cout]
-
-# Classify with Ridge Regression
+from rocketnet import RocketNet, RocketLayer
+from utils import AAP, AMP
 from sklearn.linear_model import RidgeClassifier
-clf = RidgeClassifier(alpha=0.1)
-clf.fit(X_train_features, y_train)
-predictions = clf.predict(X_test_features)
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Define two Rocket blocks with adaptive pooling
+layers = [
+    (RocketLayer, 3, 1000, 7, 1, True, (32, 32), [AAP(1), AMP(1)]),
+    (RocketLayer, 3, 2000, 5, 1, True, (32, 32), [AAP(1)])
+]
+
+model = RocketNet(device, random_state=42, *layers)
+
+# example batch (B, C, H, W)
+x = torch.randn(8, 3, 32, 32).to(device)
+features = model(x)  # shape: (B, feature_dim)
+
+# then use an sklearn classifier
+clf = RidgeClassifier()
+clf.fit(features.cpu().numpy(), y_train)
+preds = clf.predict(features_test.cpu().numpy())
 ```
 
-## Main Parameters
+Note: pooling classes in `utils.py` (`AAP`, `AMP`, `AGeM`, `GeneralizedMeanPooling`) expose `get_output_size()` so that `RocketLayer` can correctly compute the concatenated feature dimension.
 
-### `cout` (int)
-Number of random convolutional kernels to generate. Default: `10000`
+**Design choices**
+- Convolutions are randomized and not trained: this makes the extractor fast and reliable for quick experiments.
+- Layers use random dilation/padding to enrich multi-scale representations.
+- The network is evaluated in `eval()` mode and the resulting features can be normalized before feeding them to a classifier.
 
-### `candidate_lengths` (list)
-Candidate sizes for kernels. Default: `[3, 5, 7]`
+**Useful files and scripts**
+- [rocketnet.py](rocketnet.py): main implementation of `RocketNet`, `RocketLayer`, `SeqRocketLayer`.
+- [utils.py](utils.py): custom pooling, random-seed management, and enums.
+- [baselines/](baselines/): baseline scripts and experimental runners (see `baselines/exp_run.py`, `baselines/trainer.py`).
 
-### `convolution_type` (ConvolutionType)
-Convolution type:
-- `STANDARD`: Classic 2D convolution
-- `DEPTHWISE`: Depthwise convolution (more features, slower)
-- `SPATIAL`: Separable kernels (horizontal + vertical)
-- `DEPTHWISE_SEP`: Depthwise separable convolution
+**Examples and experiments**
+- Example scripts for launching experiments are provided in the `baselines/` folder.
+- For reproducible evaluations use `random_state` in `RocketNet` or call `utils.set_random_state(seed)`.
 
-### `features_to_extract` (list[FeatureType])
-Features extracted from each kernel:
-- `PPV`: Proportion of Positive Values
-- `MPV`: Mean of Positive Values
-- `MIPV`: Mean Index of Positive Values
-- `LSPV`: Longest Streak of Positive Values
+**License**
+See the `LICENSE` file for licensing details.
 
-### `distr_pair` (tuple)
-Pair of distributions for weights and biases:
-
-**Weight distributions:**
-- `GAUSSIAN_01`: Standard Gaussian N(0,1)
-- `REAL_RESNET18_WEIGHT`, `REAL_RESNET50_WEIGHT`, `REAL_RESNET101_WEIGHT`, `REAL_RESNET152_WEIGHT`: KDE distributions from real ResNet weights
-- `APPROX_RESNET*_WEIGHT_FIRST_GAUSS/LAPLACE`: Parametric approximations
-
-**Bias distributions:**
-- `UNIFORM`: Uniform [-1, 1]
-- `REAL_RESNET*_BIAS`: KDE distributions from real ResNet biases
-- `APPROX_RESNET*_BIAS_GLOBAL_GAUSS/LAPLACE`: Parametric approximations
-
-### `dilation` (DilationType)
-Dilation strategy:
-- `UNIFORM_ROCKET`: Random dilation (original ROCKET)
-- `DILATED_1`, `DILATED_2`, `DILATED_3`: Fixed dilation
-- `RANDOM_13`: Random choice among 1, 2, 3
-
-## Project Structure
-
-```
-├── rocket_img.py      # Main ROCKET implementation
-├── distributions.py   # Distributions for weights and biases
-├── utils.py           # Utilities and enumerations
-├── test.py            # Test and benchmark script
-└── results/           # Experiment results
-```
-
-## License
-
-Apache License 2.0 - see [LICENSE](LICENSE) for details.
-
-## References
-
-- Original ROCKET: [Dempster et al., 2019](https://arxiv.org/abs/1910.13051)
-- Image extension based on ResNet **distributions**
+If you want, I can add full run examples, a `requirements.txt` and a step-by-step reproduction guide.
