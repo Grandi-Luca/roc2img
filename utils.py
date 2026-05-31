@@ -69,10 +69,10 @@ class GeneralizedMeanPooling(nn.Module):
         self.p: int = p
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return (x.flatten(-2)**self.p).mean(-1)**(1/self.p)
+        return (x.flatten(2)**self.p).mean(-1)**(1/self.p)
 
     def get_output_size(self) -> int:
-        return (1,1)
+        return (1,)
 
 class AGeM(nn.Module):
     def __init__(self, p: int, output_size: int | tuple[int, int, int]) -> None:
