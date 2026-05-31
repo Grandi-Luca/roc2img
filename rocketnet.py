@@ -23,7 +23,7 @@ class SeqRocketLayer(nn.Module):
         input_dim (tuple[int, int, int], optional): Dimensions of the input tensor. Defaults to None.
         poolings (list, optional): List of pooling layers to apply. Defaults to [].
         device (torch.device, optional): Device to run the layer on. Defaults to torch.device('cpu').
-        """
+    """
 
     def __init__(self, cin: int, cout: int, kernel_size: int, stride: int, random_out_dim: bool = True, input_dim: tuple[int, int, int] = None, poolings: list | None = None, device: torch.device = torch.device('cpu')):
         super().__init__()
@@ -49,14 +49,14 @@ class SeqRocketLayer(nn.Module):
             if min_dim > self.kernel_size:
                 dilations_hw = torch.from_numpy(np.int32(2 ** np.random.uniform(0.0, upper, size=cout)))
 
-                if input_dim[0] > 1:
+                if input_dim[0] > self.kernel_size:
                     dilations_d = dilations_hw
 
         candidate_padding = torch.randint(0, 2, (cout,), dtype=torch.bool) if random_out_dim else torch.ones(cout, dtype=torch.bool)
         paddings_hw = torch.where(candidate_padding, ((self.kernel_size - 1) * dilations_hw) // 2, torch.tensor(0, dtype=torch.int32))
         paddings_d = torch.where(candidate_padding, ((self.kernel_size - 1) * dilations_d) // 2, torch.tensor(0, dtype=torch.int32)) if input_dim[0] > 1 else torch.zeros(cout, dtype=torch.int32)
 
-        depth = self.kernel_size if input_dim[0] > 1 else 1
+        depth = self.kernel_size if input_dim[0] > self.kernel_size else 1
         weights = np.random.normal(0, 1, (cout, cin, depth, self.kernel_size, self.kernel_size)).astype(np.float32)
         weights = weights - weights.mean(axis=(2, 3, 4), keepdims=True)
         bias = np.random.uniform(-1, 1, size=cout).astype(np.float32)
@@ -77,7 +77,7 @@ class SeqRocketLayer(nn.Module):
         else:
             dims = [pool.get_output_size() for pool in self.poolings]
             num_features_per_kernel = np.sum([np.prod(d) for d in dims]) # Fixed line
-            output_size = (num_features_per_kernel * self.cout,) if flatten else (self.cout, *dims[0])
+            output_size = (num_features_per_kernel * self.cout,) if flatten else dims[0]
 
         output = torch.zeros(x.shape[0], *output_size).to(self.device)
 
@@ -114,7 +114,8 @@ class SeqRocketLayer(nn.Module):
                 f"device={self.device}")
 
 class RocketLayer(nn.Module):
-    """A layer for the Rocket network that performs convolutional operations with randomized dilation, padding, weights and bias, followed by optional pooling operations. Kernels are grouped by their dilation and padding parameters.
+    """A layer for the Rocket network that performs convolutional operations with randomized dilation, padding, weights and bias, followed by optional pooling operations. 
+    Kernels are grouped by their dilation and padding parameters.
 
     Args:
         cin (int): Number of input channels.
@@ -150,7 +151,7 @@ class RocketLayer(nn.Module):
             if min_dim > self.kernel_size:
                 dilations_hw = torch.from_numpy(np.int32(2 ** np.random.uniform(0.0, upper, size=cout)))
 
-                if input_dim[0] > 1:
+                if input_dim[0] > self.kernel_size:
                     dilations_d = dilations_hw
 
         candidate_padding = torch.randint(0, 2, (cout,), dtype=torch.bool) if random_out_dim else torch.ones(cout, dtype=torch.bool)
@@ -162,9 +163,10 @@ class RocketLayer(nn.Module):
 
         self.convolution_params = {}
         for param, count in zip(unique_params, counts):
-            depth = self.kernel_size if input_dim[0] > 1 else 1
+            depth = self.kernel_size if input_dim[0] > self.kernel_size else 1
             weights = np.random.normal(0, 1, (count, cin, depth, self.kernel_size, self.kernel_size)).astype(np.float32)
             weights = weights - weights.mean(axis=(2, 3, 4), keepdims=True)
+            
             bias = np.random.uniform(-1,1, size=count).astype(np.float32)
 
             self.convolution_params[tuple(param.tolist())] = (
