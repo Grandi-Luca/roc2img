@@ -50,14 +50,15 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Define two Rocket blocks with adaptive pooling
 layers = [
-    (RocketLayer, 3, 1000, 7, 1, True, (32, 32), [AAP(1), AMP(1)]),
-    (RocketLayer, 3, 2000, 5, 1, True, (32, 32), [AAP(1)])
+    (RocketLayer, 3, 1000, 3, 1, True, (1, 32, 32), [AAP((1,2,2))]),
+    (RocketLayer, 3, 2000, 3, 1, True, (1, 32, 32), [AAP((1,2,2))]),
+    (nn.Flatten(),)
 ]
 
 model = RocketNet(device, random_state=42, *layers)
 
 # example batch (B, C, H, W)
-x = torch.randn(8, 3, 32, 32).to(device)
+x = torch.randn(8, 3, 1, 32, 32).to(device)
 features = model(x)  # shape: (B, feature_dim)
 
 # then use an sklearn classifier

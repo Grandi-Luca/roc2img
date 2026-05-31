@@ -75,40 +75,40 @@ class GeneralizedMeanPooling(nn.Module):
         return (1,1)
 
 class AGeM(nn.Module):
-    def __init__(self, p: int, output_size: int | tuple[int, int]) -> None:
+    def __init__(self, p: int, output_size: int | tuple[int, int, int]) -> None:
         super().__init__()
 
         assert p > 0, "p must be greater than 0"
         self.p: int = p
-        self.output_size: tuple[int, int] = output_size if isinstance(output_size, tuple) else (output_size, output_size)
+        self.output_size: tuple[int, int, int] = output_size if isinstance(output_size, tuple) else (output_size, output_size, output_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out: torch.Tensor = F.adaptive_avg_pool2d(x.pow(self.p), self.output_size).pow(1.0 / self.p)
+        out: torch.Tensor = F.adaptive_avg_pool3d(x.pow(self.p), self.output_size).pow(1.0 / self.p)
         return out
 
-    def get_output_size(self) -> int | tuple[int, int]:
+    def get_output_size(self) -> int | tuple[int, int, int]:
         return self.output_size
 
 class AAP(nn.Module):
-    def __init__(self, output_size: int | tuple[int, int]) -> None:
+    def __init__(self, output_size: int | tuple[int, int, int]) -> None:
         super().__init__()
-        self.output_size: tuple[int, int] = output_size if isinstance(output_size, tuple) else (output_size, output_size)
+        self.output_size: tuple[int, int, int] = output_size if isinstance(output_size, tuple) else (output_size, output_size, output_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out: torch.Tensor = F.adaptive_avg_pool2d(x, self.output_size)
+        out: torch.Tensor = F.adaptive_avg_pool3d(x, self.output_size)
         return out
 
-    def get_output_size(self) -> int | tuple[int, int]:
+    def get_output_size(self) -> int | tuple[int, int, int]:
         return self.output_size
 
 class AMP(nn.Module):
-    def __init__(self, output_size: int | tuple[int, int]) -> None:
+    def __init__(self, output_size: int | tuple[int, int, int]) -> None:
         super().__init__()
-        self.output_size: tuple[int, int] = output_size if isinstance(output_size, tuple) else (output_size, output_size)
+        self.output_size: tuple[int, int, int] = output_size if isinstance(output_size, tuple) else (output_size, output_size, output_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out = F.adaptive_max_pool2d(x, self.output_size)
+        out = F.adaptive_max_pool3d(x, self.output_size)
         return out
 
-    def get_output_size(self) -> int | tuple[int, int]:
+    def get_output_size(self) -> int | tuple[int, int, int]:
         return self.output_size

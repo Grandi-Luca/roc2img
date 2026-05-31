@@ -20,12 +20,12 @@ class SeqRocketLayer(nn.Module):
         kernel_size (int): Size of the convolutional kernel.
         stride (int): Stride for the convolutional operation.
         random_out_dim (bool, optional): Whether to use randomized output dimensions. Defaults to True
-        input_dim (tuple[int, int], optional): Dimensions of the input tensor. Defaults to None.
+        input_dim (tuple[int, int, int], optional): Dimensions of the input tensor. Defaults to None.
         poolings (list, optional): List of pooling layers to apply. Defaults to [].
         device (torch.device, optional): Device to run the layer on. Defaults to torch.device('cpu').
         """
-    
-    def __init__(self, cin: int, cout: int, kernel_size: int, stride: int, random_out_dim: bool = True, input_dim: tuple[int, int] = None, poolings: list = [], device: torch.device = torch.device('cpu')):
+
+    def __init__(self, cin: int, cout: int, kernel_size: int, stride: int, random_out_dim: bool = True, input_dim: tuple[int, int, int] = None, poolings: list | None = None, device: torch.device = torch.device('cpu')):
         super().__init__()
         self.cout = cout
         self.cin = cin
@@ -34,60 +34,68 @@ class SeqRocketLayer(nn.Module):
         self.device = device
         self.random_out_dim = random_out_dim
 
-        assert random_out_dim and len(poolings) > 0, "At least one pooling technique must be specified to standardize the convolutional outputs"
-        self.poolings = poolings
+        assert random_out_dim and poolings is not None and len(poolings) > 0, "At least one pooling technique must be specified to standardize the convolutional outputs"
+        self.poolings = poolings if poolings.copy() is not None else []
 
+        dilations_hw = torch.ones(cout, dtype=torch.int32)
+        dilations_d = torch.ones(cout, dtype=torch.int32)
         if random_out_dim:
             assert input_dim is not None, "input_dim must be specified if random_out_dim is True"
-            max_dilation = (min(list(input_dim)) - 1) / float(self.kernel_size - 1)
-            upper = float(np.log2(max_dilation))
-            if min(list(input_dim)) > kernel_size:
-                dilations = torch.from_numpy(np.int32(2 ** np.random.uniform(0.0, upper, size=cout)))
-        else:
-            dilations = torch.ones(cout, dtype=torch.int32)
+
+            min_dim = min(list(input_dim)) if input_dim[0] > 1 else min(list(input_dim[1:]))
+
+            max_dilation = (min(list(input_dim)) - 1) / float(self.kernel_size - 1) if self.kernel_size > 1 else 1
+            upper = float(np.log2(max_dilation)) if max_dilation > 0 else 1
+            if min(list(input_dim)) > self.kernel_size:
+                dilations_hw = torch.from_numpy(np.int32(2 ** np.random.uniform(0.0, upper, size=cout)))
+
+                if input_dim[0] > 1:
+                    dilations_d = dilations_hw
 
         candidate_padding = torch.randint(0, 2, (cout,), dtype=torch.bool) if random_out_dim else torch.ones(cout, dtype=torch.bool)
-        paddings = torch.where(candidate_padding, ((self.kernel_size - 1) * dilations) // 2, torch.tensor(0, dtype=torch.int32))
+        paddings_hw = torch.where(candidate_padding, ((self.kernel_size - 1) * dilations_hw) // 2, torch.tensor(0, dtype=torch.int32))
+        paddings_d = torch.where(candidate_padding, ((self.kernel_size - 1) * dilations_d) // 2, torch.tensor(0, dtype=torch.int32)) if input_dim[0] > 1 else torch.zeros(cout, dtype=torch.int32)
 
-        weights = np.random.normal(0, 1, (cout, cin, self.kernel_size, self.kernel_size)).astype(np.float32)
-        weights = weights - weights.mean(axis=(2, 3), keepdims=True)
+        depth = self.kernel_size if input_dim[0] > 1 else 1
+        weights = np.random.normal(0, 1, (cout, cin, depth, self.kernel_size, self.kernel_size)).astype(np.float32)
+        weights = weights - weights.mean(axis=(2, 3, 4), keepdims=True)
         bias = np.random.uniform(-1, 1, size=cout).astype(np.float32)
 
         self.weights = torch.from_numpy(weights).to(device)
         self.bias = torch.from_numpy(bias).to(device)
 
-        self.key_params = torch.column_stack([dilations, paddings])
+        self.key_params = torch.column_stack([dilations_d, dilations_hw, paddings_d, paddings_hw])
         self.unique_params = torch.unique(self.key_params, dim=0)
 
     def forward(self, x):
-        flatten = len(self.poolings) > 0
-        if not flatten:
+        flatten = len(self.poolings) > 1
+        if len(self.poolings) == 0:
             H_target = math.floor((x.shape[-2] + 2 * ((self.kernel_size - 1)//2) - 1 * (self.kernel_size - 1) - 1) / self.stride + 1)
             W_target = math.floor((x.shape[-1] + 2 * ((self.kernel_size - 1)//2) - 1 * (self.kernel_size - 1) - 1) / self.stride + 1)
-            output_size = (self.cout, H_target, W_target)
+            D_target = math.floor((x.shape[-3] + 2 * ((self.kernel_size - 1)//2) - 1 * (self.kernel_size - 1) - 1) / self.stride + 1)
+            output_size = (self.cout, D_target, H_target, W_target)
         else:
-            dims = [p.get_output_size() for p in self.poolings]
-            flatten = len(set(dims)) > 1 and len(self.poolings) > 1
-            num_features_per_kernel = sum(np.prod(dims, axis=-1)) if flatten else len(dims) * len(self.poolings)
-            num_features = (np.sum(np.prod(dims, axis=-1)) * self.cout,) if flatten else (self.cout, dims[0][0], dims[0][1]*len(self.poolings))
-            output_size = (x.shape[0], *num_features)
+            dims = [pool.get_output_size() for pool in self.poolings]
+            num_features_per_kernel = np.sum([np.prod(d) for d in dims]) # Fixed line
+            output_size = (num_features_per_kernel * self.cout,) if flatten else dims[0]
 
-        output = torch.zeros(output_size).to(self.device)
+        output = torch.zeros(x.shape[0], *output_size).to(self.device)
 
-        for (dilation, padding) in self.unique_params:
-            ids = torch.where(torch.all(self.key_params == torch.tensor([dilation, padding]), dim=1))[0]
+        for (dilation_d, dilation_hw, padding_d, padding_hw) in self.unique_params:
+            ids = torch.where(torch.all(self.key_params == torch.tensor([dilation_d, dilation_hw, padding_d, padding_hw]), dim=1))[0]
 
-            out = F.conv2d(
+            out = F.conv3d(
                 x,
                 self.weights[ids],
                 self.bias[ids],
-                dilation=dilation,
-                padding=padding,
+                dilation=(dilation_d, dilation_hw, dilation_hw),
+                padding=(padding_d, padding_hw, padding_hw),
                 stride=self.stride
             ).relu()
 
-            feat_maps = [pool(out).flatten(1) for pool in self.poolings] if flatten else [pool(out) for pool in self.poolings]
-            out = torch.cat(feat_maps, dim=-1)
+            if len(self.poolings) > 0:
+                feat_maps = [pool(out).flatten(1) for pool in self.poolings] if flatten else [pool(out) for pool in self.poolings]
+                out = torch.cat(feat_maps, dim=-1)
 
             if flatten:
                 offsets = torch.arange(num_features_per_kernel, device=ids.device)
@@ -130,25 +138,33 @@ class RocketLayer(nn.Module):
         assert random_out_dim and len(poolings) > 0, "At least one pooling technique must be specified to standardize the convolutional outputs"
         self.poolings = poolings
 
+        dilations_hw = torch.ones(cout, dtype=torch.int32)
+        dilations_d = torch.ones(cout, dtype=torch.int32)
         if random_out_dim:
             assert input_dim is not None, "input_dim must be specified if random_out_dim is True"
-            max_dilation = (min(list(input_dim)) - 1) / float(self.kernel_size - 1)
-            upper = float(np.log2(max_dilation))
-            if min(list(input_dim)) > kernel_size:
-                dilations = np.int32(2 ** np.random.uniform(0.0, upper, size=cout))
-        else:
-            dilations = np.ones(cout, dtype=np.int32)
 
-        candidate_padding = np.random.randint(2, size=cout, dtype=bool) if random_out_dim else np.ones(cout, dtype=bool)
-        paddings = np.where(candidate_padding, ((self.kernel_size - 1) * dilations) // 2, 0)
+            min_dim = min(list(input_dim)) if input_dim[0] > 1 else min(list(input_dim[1:]))
 
-        key_params = np.column_stack([dilations, paddings])
-        unique_params, counts = np.unique(key_params, axis=0, return_counts=True)
+            max_dilation = (min(list(input_dim)) - 1) / float(self.kernel_size - 1) if self.kernel_size > 1 else 1
+            upper = float(np.log2(max_dilation)) if max_dilation > 0 else 1
+            if min(list(input_dim)) > self.kernel_size:
+                dilations_hw = torch.from_numpy(np.int32(2 ** np.random.uniform(0.0, upper, size=cout)))
+
+                if input_dim[0] > 1:
+                    dilations_d = dilations_hw
+
+        candidate_padding = torch.randint(0, 2, (cout,), dtype=torch.bool) if random_out_dim else torch.ones(cout, dtype=torch.bool)
+        paddings_hw = torch.where(candidate_padding, ((self.kernel_size - 1) * dilations_hw) // 2, torch.tensor(0, dtype=torch.int32))
+        paddings_d = torch.where(candidate_padding, ((self.kernel_size - 1) * dilations_d) // 2, torch.tensor(0, dtype=torch.int32)) if input_dim[0] > 1 else torch.zeros(cout, dtype=torch.int32)
+
+        key_params = torch.column_stack([dilations_d, dilations_hw, paddings_d, paddings_hw])
+        unique_params, counts = torch.unique(key_params, dim=0, return_counts=True)
 
         self.convolution_params = {}
         for param, count in zip(unique_params, counts):
-            weights = np.random.normal(0, 1, (count, cin, self.kernel_size, self.kernel_size)).astype(np.float32)
-            weights = weights - weights.mean(axis=(2, 3), keepdims=True)
+            depth = self.kernel_size if input_dim[0] > 1 else 1
+            weights = np.random.normal(0, 1, (count, cin, depth, self.kernel_size, self.kernel_size)).astype(np.float32)
+            weights = weights - weights.mean(axis=(2, 3, 4), keepdims=True)
             bias = np.random.uniform(-1,1, size=count).astype(np.float32)
 
             self.convolution_params[tuple(param.tolist())] = (
@@ -157,33 +173,33 @@ class RocketLayer(nn.Module):
             )
 
     def forward(self, x):
+        flatten = len(self.poolings) > 1
         if len(self.poolings) == 0:
             H_target = math.floor((x.shape[-2] + 2 * ((self.kernel_size - 1)//2) - 1 * (self.kernel_size - 1) - 1) / self.stride + 1)
             W_target = math.floor((x.shape[-1] + 2 * ((self.kernel_size - 1)//2) - 1 * (self.kernel_size - 1) - 1) / self.stride + 1)
-            output_size = (self.cout, H_target, W_target)
+            D_target = math.floor((x.shape[-3] + 2 * ((self.kernel_size - 1)//2) - 1 * (self.kernel_size - 1) - 1) / self.stride + 1)
+            output_size = (self.cout, D_target, H_target, W_target)
         else:
-            dims = [p.get_output_size() for p in self.poolings]
-            flatten = len(set(dims)) > 1 and len(self.poolings) > 1
-            output_size = (self.cout * sum(np.prod(dims, axis=-1)),) if flatten else (self.cout * len(self.poolings), *dims[0])
+            dims = [pool.get_output_size() for pool in self.poolings]
+            num_features_per_kernel = np.sum([np.prod(d) for d in dims]) # Fixed line
+            output_size = (num_features_per_kernel * self.cout,) if flatten else dims[0]
 
-        output = torch.zeros((x.shape[0], *output_size)).to(self.device)
+        output = torch.zeros(x.shape[0], *output_size).to(self.device)
 
         s=0
-        for (dilation, padding), (weights, bias) in self.convolution_params.items():
-            out = F.conv2d(
+        for (dilation_d, dilation_hw, padding_d, padding_hw), (weights, bias) in self.convolution_params.items():
+            out = F.conv3d(
                 x,
                 weights,
                 bias,
-                dilation=dilation,
-                padding=padding,
+                dilation=(dilation_d, dilation_hw, dilation_hw),
+                padding=(padding_d, padding_hw, padding_hw),
                 stride=self.stride
             ).relu()
 
             if len(self.poolings) > 0:
-                if flatten:
-                    out = torch.cat([pool(out).flatten(1) for pool in self.poolings], dim=1)
-                else:
-                    out = torch.cat([pool(out) for pool in self.poolings], dim=1)
+                feat_maps = [pool(out).flatten(1) for pool in self.poolings] if flatten else [pool(out) for pool in self.poolings]
+                out = torch.cat(feat_maps, dim=-1)
 
             output[:, s:s + out.shape[1]] = out
             s += out.shape[1]

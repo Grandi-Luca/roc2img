@@ -17,6 +17,7 @@ def load_cifar10_data(batch_size: int) -> tuple[DataLoader, DataLoader]:
         [
             transforms.ToTensor(),
             transforms.Normalize(MEAN_CIFAR10, STD_CIFAR10),
+            transforms.Lambda(lambda x: x.unsqueeze(1)),
         ]
     )
 
