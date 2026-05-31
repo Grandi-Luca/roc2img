@@ -44,9 +44,9 @@ class SeqRocketLayer(nn.Module):
 
             min_dim = min(list(input_dim)) if input_dim[0] > 1 else min(list(input_dim[1:]))
 
-            max_dilation = (min(list(input_dim)) - 1) / float(self.kernel_size - 1) if self.kernel_size > 1 else 1
+            max_dilation = (min_dim - 1) / float(self.kernel_size - 1) if self.kernel_size > 1 else 1
             upper = float(np.log2(max_dilation)) if max_dilation > 0 else 1
-            if min(list(input_dim)) > self.kernel_size:
+            if min_dim > self.kernel_size:
                 dilations_hw = torch.from_numpy(np.int32(2 ** np.random.uniform(0.0, upper, size=cout)))
 
                 if input_dim[0] > 1:
@@ -145,9 +145,9 @@ class RocketLayer(nn.Module):
 
             min_dim = min(list(input_dim)) if input_dim[0] > 1 else min(list(input_dim[1:]))
 
-            max_dilation = (min(list(input_dim)) - 1) / float(self.kernel_size - 1) if self.kernel_size > 1 else 1
+            max_dilation = (min_dim - 1) / float(self.kernel_size - 1) if self.kernel_size > 1 else 1
             upper = float(np.log2(max_dilation)) if max_dilation > 0 else 1
-            if min(list(input_dim)) > self.kernel_size:
+            if min_dim > self.kernel_size:
                 dilations_hw = torch.from_numpy(np.int32(2 ** np.random.uniform(0.0, upper, size=cout)))
 
                 if input_dim[0] > 1:
