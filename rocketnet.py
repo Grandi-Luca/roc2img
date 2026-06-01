@@ -45,17 +45,17 @@ class SeqRocketLayer(nn.Module):
             input_depth, input_h, input_w = input_dim
 
             # Compute dilations
-            min_input_dim = min(input_depth, input_h, input_w) if input_depth > kernel_size else min(input_h, input_w)
-            max_dilation = (min_input_dim - 1) / float(kernel_size - 1) if self.kernel_size > 1 else 1
-            upper = float(np.log2(max_dilation)) if max_dilation > 0 else 1
-            if min_input_dim > kernel_size:
+            min_input_dim = min(input_depth, input_h, input_w) if input_depth > self.kernel_size else min(input_h, input_w)
+            if self.kernel_size > 1 and min_input_dim > self.kernel_size:
+                max_dilation = (min_input_dim - 1) / float(self.kernel_size - 1)
+                upper = float(np.log2(max_dilation))
                 d = np.int32(2 ** np.random.uniform(0.0, upper, size=cout))
                 dilations_hw = d
-                if input_depth > kernel_size:
+                if input_depth > self.kernel_size:
                     dilations_d = d
 
         # Compute paddings vectorized
-        candidate_pad = np.random.randint(0, 2, size=cout, dtype=bool) if random_out_dim else np.ones(cout, dtype=bool)
+        candidate_pad = np.random.randint(2, size=cout).astype(bool) if random_out_dim else np.ones(cout).astype(bool)
         paddings_d = np.where(candidate_pad, ((self.kernel_size - 1) * dilations_d) // 2, 0) if input_depth > self.kernel_size else np.zeros(cout, dtype=np.int32)
         paddings_hw = np.where(candidate_pad, ((self.kernel_size - 1) * dilations_hw) // 2, 0)
 
@@ -118,7 +118,7 @@ class SeqRocketLayer(nn.Module):
                 f"device={self.device}")
 
 class RocketLayer(nn.Module):
-    """A layer for the Rocket network that performs convolutional operations with randomized dilation, padding, weights and bias, followed by optional pooling operations. 
+    """A layer for the Rocket network that performs convolutional operations with randomized dilation, padding, weights and bias, followed by optional pooling operations.
     Kernels are grouped by their dilation and padding parameters.
 
     Args:
@@ -151,17 +151,17 @@ class RocketLayer(nn.Module):
             input_depth, input_h, input_w = input_dim
 
             # Compute dilations
-            min_input_dim = min(input_depth, input_h, input_w) if input_depth > kernel_size else min(input_h, input_w)
-            max_dilation = (min_input_dim - 1) / float(kernel_size - 1) if self.kernel_size > 1 else 1
-            upper = float(np.log2(max_dilation)) if max_dilation > 0 else 1
-            if min_input_dim > kernel_size:
+            min_input_dim = min(input_depth, input_h, input_w) if input_depth > self.kernel_size else min(input_h, input_w)
+            if self.kernel_size > 1 and min_input_dim > self.kernel_size:
+                max_dilation = (min_input_dim - 1) / float(self.kernel_size - 1)
+                upper = float(np.log2(max_dilation))
                 d = np.int32(2 ** np.random.uniform(0.0, upper, size=cout))
                 dilations_hw = d
-                if input_depth > kernel_size:
+                if input_depth > self.kernel_size:
                     dilations_d = d
 
         # Compute paddings vectorized
-        candidate_pad = np.random.randint(0, 2, size=cout, dtype=bool) if random_out_dim else np.ones(cout, dtype=bool)
+        candidate_pad = np.random.randint(2, size=cout).astype(bool) if random_out_dim else np.ones(cout).astype(bool)
         paddings_d = np.where(candidate_pad, ((self.kernel_size - 1) * dilations_d) // 2, 0) if input_depth > self.kernel_size else np.zeros(cout, dtype=np.int32)
         paddings_hw = np.where(candidate_pad, ((self.kernel_size - 1) * dilations_hw) // 2, 0)
 
@@ -172,9 +172,9 @@ class RocketLayer(nn.Module):
         # Generate weights and biases for each unique parameter group
         self.convolution_params = {}
         for key, count in zip(unique_params, counts):
-            depth = kernel_size if input_depth > kernel_size else 1
-            
-            weights = np.random.normal(0, 1, (count, cin, depth, kernel_size, kernel_size)).astype(np.float32)
+            depth = self.kernel_size if input_depth > self.kernel_size else 1
+
+            weights = np.random.normal(0, 1, (count, cin, depth, self.kernel_size, self.kernel_size)).astype(np.float32)
             weights = weights - weights.mean(axis=(2, 3, 4), keepdims=True)
 
             bias = np.random.uniform(-1, 1, size=count).astype(np.float32)
