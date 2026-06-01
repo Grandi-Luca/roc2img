@@ -9,7 +9,7 @@ import inspect
 
 from utils import set_random_state
 
-class SeqRocketLayer(nn.Module):
+class RocketLayer(nn.Module):
     """
     A Rocket layer that applies convolutions with random dilation, padding, weights and bias, then optionally applies pooling.
     Kernels keep their original order. Internally, weights and bias are grouped by the same dilation/padding pair to run the convolutions efficiently.
@@ -34,7 +34,8 @@ class SeqRocketLayer(nn.Module):
         self.device = device
         self.random_out_dim = random_out_dim
 
-        assert random_out_dim and poolings is not None and len(poolings) > 0, "At least one pooling technique must be specified to standardize the convolutional outputs"
+        if random_out_dim and poolings is not None and len(poolings) > 0:
+            raise ValueError("At least one pooling technique must be specified to standardize the convolutional outputs")
         self.poolings = poolings if poolings.copy() is not None else []
 
         # Initialize arrays for dilations
@@ -116,113 +117,6 @@ class SeqRocketLayer(nn.Module):
                 f"random_out_dim={self.random_out_dim}, "
                 f"poolings=[{' '.join([pool.__class__.__name__ for pool in self.poolings])}], "
                 f"device={self.device}")
-
-class RocketLayer(nn.Module):
-    """A layer for the Rocket network that performs convolutional operations with randomized dilation, padding, weights and bias, followed by optional pooling operations.
-    Kernels are grouped by their dilation and padding parameters.
-
-    Args:
-        cin (int): Number of input channels.
-        cout (int): Number of output channels.
-        kernel_size (int): Size of the convolutional kernel.
-        stride (int): Stride for the convolutional operation.
-        random_out_dim (bool, optional): Whether to use randomized output dimensions. Defaults to True
-        input_dim (tuple[int, int], optional): Dimensions of the input tensor. Defaults to None.
-        poolings (list, optional): List of pooling layers to apply. Defaults to [].
-        device (torch.device, optional): Device to run the layer on. Defaults to torch.device('cpu').
-    """
-    def __init__(self, cin: int, cout: int, kernel_size: int, stride: int, random_out_dim: bool = True, input_dim: tuple[int, int, int] = None, poolings: list = [], device: torch.device = torch.device('cpu')):
-        super().__init__()
-        self.cout = cout
-        self.cin = cin
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.device = device
-        self.random_out_dim = random_out_dim
-
-        assert random_out_dim and len(poolings) > 0, "At least one pooling technique must be specified to standardize the convolutional outputs"
-        self.poolings = poolings
-
-        # Initialize arrays for dilations
-        dilations_d = np.ones(cout, dtype=np.int32)
-        dilations_hw = np.ones(cout, dtype=np.int32)
-        if random_out_dim:
-            assert input_dim is not None, "input_dim must be specified if random_out_dim is True"
-            input_depth, input_h, input_w = input_dim
-
-            # Compute dilations
-            min_input_dim = min(input_depth, input_h, input_w) if input_depth > self.kernel_size else min(input_h, input_w)
-            if self.kernel_size > 1 and min_input_dim > self.kernel_size:
-                max_dilation = (min_input_dim - 1) / float(self.kernel_size - 1)
-                upper = float(np.log2(max_dilation))
-                d = np.int32(2 ** np.random.uniform(0.0, upper, size=cout))
-                dilations_hw = d
-                if input_depth > self.kernel_size:
-                    dilations_d = d
-
-        # Compute paddings vectorized
-        candidate_pad = np.random.randint(2, size=cout).astype(bool) if random_out_dim else np.ones(cout).astype(bool)
-        paddings_d = np.where(candidate_pad, ((self.kernel_size - 1) * dilations_d) // 2, 0) if input_depth > self.kernel_size else np.zeros(cout, dtype=np.int32)
-        paddings_hw = np.where(candidate_pad, ((self.kernel_size - 1) * dilations_hw) // 2, 0)
-
-        # Group kernels by unique parameter combinations
-        key_params = np.column_stack([dilations_d, dilations_hw, paddings_d, paddings_hw])
-        unique_params, counts = np.unique(key_params, axis=0, return_counts=True)
-
-        # Generate weights and biases for each unique parameter group
-        self.convolution_params = {}
-        for key, count in zip(unique_params, counts):
-            depth = self.kernel_size if input_depth > self.kernel_size else 1
-
-            weights = np.random.normal(0, 1, (count, cin, depth, self.kernel_size, self.kernel_size)).astype(np.float32)
-            weights = weights - weights.mean(axis=(2, 3, 4), keepdims=True)
-
-            bias = np.random.uniform(-1, 1, size=count).astype(np.float32)
-
-            self.convolution_params[tuple(key.tolist())] = (torch.from_numpy(weights).to(device), torch.from_numpy(bias).to(device))
-
-    def forward(self, x):
-        flatten = len(self.poolings) > 1
-        if len(self.poolings) == 0:
-            H_target = math.floor((x.shape[-2] + 2 * ((self.kernel_size - 1)//2) - 1 * (self.kernel_size - 1) - 1) / self.stride + 1)
-            W_target = math.floor((x.shape[-1] + 2 * ((self.kernel_size - 1)//2) - 1 * (self.kernel_size - 1) - 1) / self.stride + 1)
-            D_target = math.floor((x.shape[-3] + 2 * ((self.kernel_size - 1)//2) - 1 * (self.kernel_size - 1) - 1) / self.stride + 1)
-            output_size = (self.cout, D_target, H_target, W_target)
-        else:
-            dims = [pool.get_output_size() for pool in self.poolings]
-            num_features_per_kernel = np.sum([np.prod(d) for d in dims]) # Fixed line
-            output_size = (num_features_per_kernel * self.cout,) if flatten else (self.cout, *dims[0])
-
-        output = torch.zeros(x.shape[0], *output_size).to(self.device)
-
-        s=0
-        for (dilation_d, dilation_hw, padding_d, padding_hw), (weights, bias) in self.convolution_params.items():
-            out = F.conv3d(
-                x,
-                weights,
-                bias,
-                dilation=(dilation_d, dilation_hw, dilation_hw),
-                padding=(padding_d, padding_hw, padding_hw),
-                stride=self.stride
-            ).relu()
-
-            if len(self.poolings) > 0:
-                feat_maps = [pool(out).flatten(1) for pool in self.poolings] if flatten else [pool(out) for pool in self.poolings]
-                out = torch.cat(feat_maps, dim=-1)
-
-            output[:, s:s + out.shape[1]] = out
-            s += out.shape[1]
-            del out
-
-        return output
-
-    def extra_repr(self) -> str:
-        return (f"cin={self.cin}, cout={self.cout}, "
-                f"kernel_size={self.kernel_size}, stride={self.stride}, "
-                f"random_out_dim={self.random_out_dim}, "
-                f"poolings=[{' '.join([pool.__class__.__name__ for pool in self.poolings])}], "
-                f"device={self.device}")
-
 
 def build_module(module: nn.Module, *args, **kwargs):
     return module(*args, **kwargs)
