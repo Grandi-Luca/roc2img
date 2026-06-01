@@ -82,7 +82,7 @@ class RocketLayer(nn.Module):
         else:
             dims = [pool.get_output_size() for pool in self.poolings]
             num_features_per_kernel = np.sum([np.prod(d) for d in dims]) # Fixed line
-            output_size = (num_features_per_kernel * self.cout,) if flatten else dims[0]
+            output_size = (num_features_per_kernel * self.cout,) if flatten else (self.cout, *dims[0])
 
         output = torch.zeros(x.shape[0], *output_size).to(self.device)
 
