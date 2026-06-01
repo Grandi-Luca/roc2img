@@ -5,7 +5,8 @@ This repository contains experimental implementations for image feature extracti
 **Main contents**
 - `rocketnet.py`: implementation of `RocketNet`, `RocketLayer` and `SeqRocketLayer` (randomized feature extractors).
 - `utils.py`: helpers for custom pooling, random seed control and utility types.
-- `baselines/`: scripts and implementations for evaluation and experimental runs.
+- `exp_run.py`: example script for running the Rocket feature extractor and training a classifier.
+- `baselines/`: baseline models, training code and experiment runners for comparison runs.
 
 **Goal**
 Provide a fast, optionally deterministic feature extractor that can be paired with linear classifiers (e.g. `RidgeClassifier`) for quick computer vision experiments.
@@ -80,7 +81,8 @@ Note: pooling classes in `utils.py` (`AAP`, `AMP`, `AGeM`, `GeneralizedMeanPooli
 - [baselines/](baselines/): baseline scripts and experimental runners (see `baselines/exp_run.py`, `baselines/trainer.py`).
 
 **Examples and experiments**
-- Example scripts for launching experiments are provided in the `baselines/` folder.
+- Example usage is shown in `exp_run.py`.
+- Baseline experiments and training pipelines are provided in the `baselines/` folder.
 - For reproducible evaluations use `random_state` in `RocketNet` or call `utils.set_random_state(seed)`.
 
 **License**

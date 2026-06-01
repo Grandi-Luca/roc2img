@@ -79,8 +79,8 @@ if __name__ == "__main__":
                 3,
                 1,
                 True,
-                input_shape[-2:] if j==0 else (min_dim//(2*(j+1)), min_dim//(2*(j+1))),
-                [AAP(min_dim//(2*(j+1)) if j<i else 2)],
+                input_shape[1:] if j==0 else (1, min_dim//(2*(j+1)), min_dim//(2*(j+1))),
+                [AAP((1, min_dim//(2*(j+1)) if j<i else 2, min_dim//(2*(j+1)) if j<i else 2))],
                 device
             )
             for j in range(i+1)
