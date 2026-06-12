@@ -1,108 +1,149 @@
-# ROCKET for Image Classification
+# ROCKET for Image Classification (images as volumes)
 
-An implementation of ROCKET (RandOm Convolutional KErnel Transform) for image classification, with support for various weight and bias distributions extracted from pre-trained ResNet models.
+PyTorch implementation of ROCKET (RandOm Convolutional KErnel Transform) adapted to images by using **3D convolutions**.
+For standard 2D images, treat them as volumes with depth $D=1$.
 
-## What is ROCKET?
+Key points:
 
-ROCKET is a feature extraction technique based on random convolutions, originally developed for time series. This implementation extends ROCKET to work with 2D images, using convolutional kernels generated from various distributions, including those derived from weights and biases of pre-trained ResNet models.
+- Input tensors are expected in **5D**: `[B, C, D, H, W]`.
+- The ROCKET module is a *feature extractor* (no `fit()` / `transform()` methods). Use a downstream classifier (e.g. Ridge).
+- Kernel weights/biases can be sampled from multiple distributions, including KDEs fitted from pretrained ResNet weights/biases.
 
 ## Installation
 
+Requirements:
+
+- Python **3.10+**
+- `torch`, `torchvision`
+- `numpy`
+- `scikit-learn` (needed both for KDE-based distributions and typical classifiers)
+
+Minimal install:
+
 ```bash
-pip install numpy torch torchvision scikit-learn pandas
+pip install numpy torch torchvision scikit-learn
+```
+
+Extras used by the provided experiment runner:
+
+```bash
+pip install wandb nibabel pandas
 ```
 
 ## Basic Usage
 
 ```python
 import torch
+
 from rocket_img import ROCKET
-from utils import ConvolutionType, FeatureType, DilationType
+from utils import ConvolutionType, DilationType, FeatureType, PaddingMode
 from distributions import DistributionType
 
-# Create the ROCKET model
+# Input MUST be 5D: [B, C, D, H, W]
+# For standard 2D images use D=1.
+B, C, H, W = 100, 3, 32, 32
+X_train = torch.rand(B, C, 1, H, W)
+y_train = torch.randint(0, 10, (B,))
+
+X_test = torch.rand(20, C, 1, H, W)
+y_test = torch.randint(0, 10, (20,))
+
 rocket = ROCKET(
-    cout=1000,                          # Number of random kernels
-    candidate_lengths=[3, 5, 7],        # Kernel sizes
-    distr_pair=(                        # Distributions for weights and biases
-        DistributionType.GAUSSIAN_01,
-        DistributionType.UNIFORM
-    ),
-    features_to_extract=[FeatureType.PPV],  # Features to extract
-    dilation=DilationType.UNIFORM_ROCKET,    # Dilation type
+    cin=C,
+    input_dhw=(1, H, W),
+    cout=1000,
+    candidate_lengths=[3],
+    candidate_strides=[1],
+    padding_mode=PaddingMode.RANDOM,
+    distr_pair=(DistributionType.GAUSSIAN_01, DistributionType.UNIFORM),
+    features_to_extract=[FeatureType.AVG2D, FeatureType.GMPV, FeatureType.PPV, FeatureType.MPV],
+    dilation=DilationType.UNIFORM_ROCKET,
     convolution_type=ConvolutionType.STANDARD,
-    random_state=42
+    random_state=42,
 )
 
-# Sample data
-X_train = torch.rand(100, 3, 32, 32)  # [batch, channels, height, width]
-y_train = torch.randint(0, 10, (100,))  # 100 labels
-X_test = torch.rand(20, 3, 32, 32)    # [batch, channels, height, width]
-y_test = torch.randint(0, 10, (20,))    # 20 labels
+with torch.no_grad():
+    X_train_features = rocket(X_train).numpy()
+    X_test_features = rocket(X_test).numpy()
 
-# Generate kernels (fit)
-rocket.fit(X_train)
-
-# Transform data
-X_train_features = rocket.transform(X_train)  # Output: numpy array [100, cout]
-X_test_features = rocket.transform(X_test)    # Output: numpy array [20, cout]
-
-# Classify with Ridge Regression
 from sklearn.linear_model import RidgeClassifier
+
 clf = RidgeClassifier(alpha=0.1)
 clf.fit(X_train_features, y_train)
 predictions = clf.predict(X_test_features)
 ```
 
+Notes:
+
+- Output feature dimension is approximately `cout * (#features)`. Some features (e.g. `AVG2D`, `MAX2D`) produce **4 values per kernel**.
+- If you use `DistributionType.REAL_RESNET*_WEIGHT/BIAS`, torchvision may download pretrained weights on first use.
+
 ## Main Parameters
 
-### `cout` (int)
-Number of random convolutional kernels to generate. Default: `10000`
+### `cin` (int) and `input_dhw` (tuple | int)
 
-### `candidate_lengths` (list)
-Candidate sizes for kernels. Default: `[3, 5, 7]`
+- `cin`: number of input channels (e.g. 3 for RGB)
+- `input_dhw`: `(D, H, W)` of the input tensor (or a single `int` used for all three)
+
+Inputs must match `[B, cin, D, H, W]`.
+
+### `cout` (int)
+
+Number of random convolutional kernels to generate.
+
+### `candidate_lengths` (list[int])
+
+Kernel sizes to sample.
+
+### `candidate_strides` (list[int])
+
+Stride values to sample.
+
+### `padding_mode` (PaddingMode)
+
+- `ON`: always padded
+- `OFF`: never padded
+- `RANDOM`: random per-kernel
 
 ### `convolution_type` (ConvolutionType)
-Convolution type:
-- `STANDARD`: Classic 2D convolution
-- `DEPTHWISE`: Depthwise convolution (more features, slower)
-- `SPATIAL`: Separable kernels (horizontal + vertical)
-- `DEPTHWISE_SEP`: Depthwise separable convolution
+
+- `STANDARD`
+- `DEPTHWISE`
+- `SPATIAL`
+- `DEPTHWISE_SEP`
 
 ### `features_to_extract` (list[FeatureType])
-Features extracted from each kernel:
-- `PPV`: Proportion of Positive Values
-- `MPV`: Mean of Positive Values
-- `MIPV`: Mean Index of Positive Values
-- `LSPV`: Longest Streak of Positive Values
+
+Common features:
+
+- `PPV`, `MPV`, `MIPV`, `LSPV`
+- `GAP`, `MAXPV`, `MINPV`, `GMPV`, `ENTROPY`
+- `AVG2D`, `MAX2D` (adaptive pooling to `(1, 2, 2)` → 4 values per kernel)
 
 ### `distr_pair` (tuple)
-Pair of distributions for weights and biases:
 
-**Weight distributions:**
-- `GAUSSIAN_01`: Standard Gaussian N(0,1)
-- `REAL_RESNET18_WEIGHT`, `REAL_RESNET50_WEIGHT`, `REAL_RESNET101_WEIGHT`, `REAL_RESNET152_WEIGHT`: KDE distributions from real ResNet weights
-- `APPROX_RESNET*_WEIGHT_FIRST_GAUSS/LAPLACE`: Parametric approximations
+Pair of distributions for (weights, bias). See [distributions.py](distributions.py) for the full list.
 
-**Bias distributions:**
-- `UNIFORM`: Uniform [-1, 1]
-- `REAL_RESNET*_BIAS`: KDE distributions from real ResNet biases
-- `APPROX_RESNET*_BIAS_GLOBAL_GAUSS/LAPLACE`: Parametric approximations
+Examples:
+
+- Weights: `GAUSSIAN_01`, `CONV2D_WEIGHT`, `REAL_RESNET50_WEIGHT`, `APPROX_RESNET50_WEIGHT_FIRST_GAUSS`, ...
+- Bias: `UNIFORM`, `CONV2D_BIAS`, `REAL_RESNET50_BIAS`, `APPROX_RESNET50_BIAS_GLOBAL_GAUSS`, ...
 
 ### `dilation` (DilationType)
-Dilation strategy:
-- `UNIFORM_ROCKET`: Random dilation (original ROCKET)
-- `DILATED_1`, `DILATED_2`, `DILATED_3`: Fixed dilation
-- `RANDOM_13`: Random choice among 1, 2, 3
+
+Supported by the current kernel sampler:
+
+- `UNIFORM_ROCKET` (random dilation like ROCKET)
+- `DILATED_1`, `DILATED_2`, `DILATED_3` (fixed dilations)
 
 ## Project Structure
 
 ```
-├── rocket_img.py      # Main ROCKET implementation
-├── distributions.py   # Distributions for weights and biases
-├── utils.py           # Utilities and enumerations
-├── test.py            # Test and benchmark script
-└── results/           # Experiment results
+├── rocket_img.py      # ROCKET feature extractor
+├── distributions.py   # Weight/bias sampling distributions
+├── utils.py           # Enums + helpers
+├── baselines/         # Baseline training code (separate)
+└── results/           # Experiment results (CSV)
 ```
 
 ## License
@@ -112,4 +153,3 @@ Apache License 2.0 - see [LICENSE](LICENSE) for details.
 ## References
 
 - Original ROCKET: [Dempster et al., 2019](https://arxiv.org/abs/1910.13051)
-- Image extension based on ResNet **distributions**
