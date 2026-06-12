@@ -295,8 +295,8 @@ if __name__ == "__main__":
         )
 
         run = wandb.init(
-            project=f"RocketNet2DImg",
-            entity="luca-gr",
+            project=f"project",
+            entity="entity-name",
             config={
                 **rocket.get_params(),
                 'dataset': f'{args.dataset}',
